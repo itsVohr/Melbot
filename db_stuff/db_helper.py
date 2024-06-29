@@ -41,6 +41,20 @@ class DBHelper:
         self.c.execute(query, (item_name, item_price))
         self.conn.commit()
 
+    def remove_item_by_id(self, item_id: int):
+        query = 'DELETE FROM shop WHERE item_id=?'
+        self.c.execute(query, (item_id,))
+        rows_deleted = self.c.rowcount
+        self.conn.commit()
+        return rows_deleted
+
+    def remove_item_by_name(self, item_name: str) -> int:
+        query = 'DELETE FROM shop WHERE item_name=?'
+        self.c.execute(query, (item_name,))
+        rows_deleted = self.c.rowcount
+        self.conn.commit()
+        return rows_deleted
+
     def get_total_currency(self, userid: str):
         query = 'SELECT SUM(currency_change) FROM events WHERE userid=?'
         self.c.execute(query, (userid,))
