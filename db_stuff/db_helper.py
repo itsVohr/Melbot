@@ -30,36 +30,35 @@ class DBHelper:
         self.c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_item_name ON shop(item_name)')
         self.conn.commit()
 
-    def add_event(self, userid:str, currency_change:int, reason:str):
+    def add_event(self, userid: str, currency_change: int, reason: str):
         event_timestamp = int(datetime.now(timezone.utc).timestamp())
-        self.c.execute(f'INSERT INTO events VALUES ("{userid}", {event_timestamp}, {currency_change}, "{reason}")')
+        query = 'INSERT INTO events VALUES (?, ?, ?, ?)'
+        self.c.execute(query, (userid, event_timestamp, currency_change, reason))
         self.conn.commit()
 
-    def add_item(self, item_name:str, item_price:int):
-        self.c.execute(f'INSERT INTO shop (item_name, item_price) VALUES ("{item_name}", {item_price})')
+    def add_item(self, item_name: str, item_price: int):
+        query = 'INSERT INTO shop (item_name, item_price) VALUES (?, ?)'
+        self.c.execute(query, (item_name, item_price))
         self.conn.commit()
 
-    def get_total_currency(self, userid:str):
-        self.c.execute(f'SELECT SUM(currency_change) FROM events WHERE userid="{userid}"')
+    def get_total_currency(self, userid: str):
+        query = 'SELECT SUM(currency_change) FROM events WHERE userid=?'
+        self.c.execute(query, (userid,))
         result = self.c.fetchone()
         return result[0] if result[0] is not None else 0
     
-    def buy_items_by_id(self, item_id:int):
-        self.c.execute(f'SELECT item_price FROM shop WHERE item_id={item_id}')
+    def buy_items_by_id(self, item_id: int):
+        query = 'SELECT item_price FROM shop WHERE item_id=?'
+        self.c.execute(query, (item_id,))
         result = self.c.fetchone()
-        if result is None:
-            return None
-        item_price = result[0]
-        return item_price
-    
-    def buy_items_by_name(self, item_name:str):
-        self.c.execute(f"SELECT item_price FROM shop WHERE item_name='{item_name}'")
+        return result[0] if result else None
+        
+    def buy_items_by_name(self, item_name: str):
+        query = 'SELECT item_price FROM shop WHERE item_name=?'
+        self.c.execute(query, (item_name,))
         result = self.c.fetchone()
-        if result is None:
-            return None
-        item_price = result[0]
-        return item_price
-    
+        return result[0] if result else None
+        
     def get_shop_items(self):
         self.c.execute('SELECT * FROM shop')
         return self.c.fetchall()

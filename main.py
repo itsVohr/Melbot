@@ -56,9 +56,15 @@ async def buy(ctx, item_id = None):
         return
     
     user_id = str(ctx.author.id)
+    try:
+        item_id = int(item_id)
+    except ValueError:
+        print("Conversion to int failed")
 
     if type(item_id) == int:
         item_price = db.buy_items_by_id(item_id)
+        print(item_price)
+        print(item_id)
     elif type(item_id) == str:
         item_price = db.buy_items_by_name(item_id)
     else:
