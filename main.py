@@ -24,6 +24,7 @@ The admin can add or remove currency from a user.
 -- Done.
 The admin can add or remove items from the shop using a command.
 -- Done.
+When an item is bought, dm the buyer and post in a specific channel.
 Sanitize inputs.
 Optional: Refactor code to move bot stuff to another file.
 Optional: There is a web interface to manage the shop.
@@ -68,7 +69,7 @@ class SafeMember(commands.Converter):
 
 def gamba(value: int) -> int:
     # 50% chance of returning twice the value
-    if random.random() < 0.5:
+    if random.random() < 0.45:
         return 2 * value
     else:
         return 0
