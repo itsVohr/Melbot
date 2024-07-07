@@ -54,7 +54,17 @@ class Melbot():
                 self.db.add_event(message.author.id, 1, 'message')
             await self.bot.process_commands(message)
 
+        # remove built-in help command and add custom help command
+        self.bot.remove_command('help')
         @self.bot.command()
+        async def help(ctx):
+            embed = discord.Embed(title="Melbot Help", description="List of available commands")
+            for command in self.bot.commands:
+                if await command.can_run(ctx):
+                    embed.add_field(name=f"{self.bot.command_prefix}{command.name}", value=command.help or "No description", inline=False)
+            await ctx.send(embed=embed)
+
+        @self.bot.command(help="Display the total melpoints of a user. You can use !points @user to check another user's points.")
         async def points(ctx, user: SafeMember = None):
             if user is None:
                 user = ctx.author
@@ -62,7 +72,7 @@ class Melbot():
             total_currency = self.db.get_total_currency(user_id)
             await ctx.send(f'{user.name} has {total_currency} points')
 
-        @self.bot.command()
+        @self.bot.command(help="Buy an item from the shop. You can use !buy item_id to buy an item by its ID, or !buy item_name to buy an item by its name.")
         async def buy(ctx, item_id = None):
             if item_id is None:
                 await ctx.send("Please provide an item ID.")
@@ -89,13 +99,16 @@ class Melbot():
             user_points = self.db.get_total_currency(user_id)
             
             if user_points < item_price:
-                await ctx.send(f"You do not have enough points to buy this item. You have {user_points} points but need {item_price} points.")
+                await ctx.send(f"You do not have enough melpoints to buy this item. You have {user_points} melpoints but need {item_price}.")
                 return
 
             self.db.add_event(user_id, item_price * -1, f"bought item {item_id}")
-            await ctx.send(f"You have successfully bought the item with ID {item_id} for {item_price} points.")
+            await ctx.send(f"You have successfully bought the item with ID {item_id} for {item_price} melpoints.")
+            shop_channel_id = await self.bot.fetch_channel(os.environ['SHOP_CHANNEL_ID'])
+            await shop_channel_id.send(f"{ctx.author.mention} has bought the item with ID {item_id} for {item_price} melpoints.")
+            await ctx.author.send(f"You have successfully bought the item with ID {item_id} for {item_price} melpoints.")
 
-        @self.bot.command()
+        @self.bot.command(help="Display the shop items.")
         async def shop(ctx):
             items = self.db.get_shop_items()
             if len(items) == 0:
@@ -106,7 +119,7 @@ class Melbot():
                 shop_str += f"ID: {item[0]}, Name: {item[1]}, Price: {item[2]}\n"
             await ctx.send(shop_str)
 
-        @self.bot.command()
+        @self.bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
         async def gamble(ctx, points: int):
             user_id = str(ctx.author.id)
             user_points = self.db.get_total_currency(user_id)
@@ -124,7 +137,7 @@ class Melbot():
                 await ctx.send(f"You won {earned_points} points.")
 
         # admin commands
-        @self.bot.command()
+        @self.bot.command(help="Add an item to the shop. You can use !add_item <item_name> <item_price> to add an item to the shop.")
         @commands.has_permissions(administrator=True)
         async def add_item(ctx, item_name: str = None, item_price: int = None):
             if item_name is None or item_price is None:
@@ -136,14 +149,14 @@ class Melbot():
             self.db.add_item(item_name, item_price)
             await ctx.send(f"Item {item_name} added to the shop with price {item_price} points.")
 
-        @self.bot.command()
+        @self.bot.command(help="Add melpoints to a user's account. You can use !add @user <number> to add melpoints to a user's account.")
         @commands.has_permissions(administrator=True)
         async def add(ctx, user: SafeMember, points: int):
             user_id = str(user.id)
             self.db.add_event(user_id, points, 'admin added')
             await ctx.send(f"{points} points added to {user.name}'s account.")
 
-        @self.bot.command()
+        @self.bot.command(help="Remove an item from the shop. You can use !remove_item <item_id> to remove an item by its ID, or !remove_item <item_name> to remove an item by its name.")
         @commands.has_permissions(administrator=True)
         async def remove_item(ctx, item_id: str):
             if item_id is None:
@@ -166,7 +179,7 @@ class Melbot():
             else:
                 await ctx.send(f"Item with ID {item_id} removed from the shop.")
 
-        @self.bot.command()
+        @self.bot.command(help="Remove melpoints from a user's account. You can use !remove @user <number> to remove melpoints from a user's account.")
         @commands.has_permissions(administrator=True)
         async def remove(ctx, user: SafeMember, points: int):
             user_id = str(user.id)
