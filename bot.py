@@ -11,7 +11,6 @@ class SafeMember(commands.Converter):
             member = await commands.MemberConverter().convert(ctx, argument)
             return member
         except commands.MemberNotFound:
-            # Send message to Discord before raising exception
             message = await ctx.send(f"Cannot find user {argument}.")
             
             def check(m):
@@ -20,7 +19,7 @@ class SafeMember(commands.Converter):
             try:
                 await ctx.wait_for('message', check=check, timeout=5.0)
             except asyncio.TimeoutError:
-                pass  # Handle timeout if needed
+                pass
             
             raise commands.BadArgument(f'Member "{argument}" not found.')
 
@@ -49,7 +48,8 @@ class Melbot():
         async def on_message(message):
             if message.author == self.bot.user:
                 return
-            self.db.add_event(message.author.id, 1, 'message')
+            if not message.content.startswith(self.bot.command_prefix):
+                self.db.add_event(message.author.id, 1, 'message')
             await self.bot.process_commands(message)
 
         @self.bot.command()
