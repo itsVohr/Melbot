@@ -1,6 +1,7 @@
 import os
 import discord
 import asyncio
+import logging
 from utils import gamba
 from discord.ext import commands
 from db_stuff.db_helper import DBHelper
@@ -34,8 +35,7 @@ class Melbot():
         self.db.create_db()
 
     def run(self):
-        print("Bot is running")
-        print(self)
+        logging.info("Initating Melbot...") 
         self.add_bot_events()
         self.bot.run(self.discord_token)
 

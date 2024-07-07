@@ -1,6 +1,8 @@
 import dotenv
 import signal
 import sys
+import logging
+import datetime
 from bot import Melbot
 
 # Goals for this bot:
@@ -35,12 +37,19 @@ Optional: Add logging.
 Optional: Create a table with aggregated currency data for each user.
 """
 
+# Set up logging
+current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+logging.basicConfig(
+    filename = f'melbot-{current_date}.log',
+    filemode='a',
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 dotenv.load_dotenv()
 melbot = Melbot()
 
 # Function to handle graceful shutdown
 def shutdown_handler(signum, frame):
-    print("Shutting down...")
     melbot.db_close()
     sys.exit(0)
 
