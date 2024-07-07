@@ -12,6 +12,7 @@ class SafeMember(commands.Converter):
             member = await commands.MemberConverter().convert(ctx, argument)
             return member
         except commands.MemberNotFound:
+            logging.debug(f"Member conversion failed for {argument}.")
             message = await ctx.send(f"Cannot find user {argument}.")
             
             def check(m):
@@ -20,6 +21,7 @@ class SafeMember(commands.Converter):
             try:
                 await ctx.wait_for('message', check=check, timeout=5.0)
             except asyncio.TimeoutError:
+                logging.info("Error message timed out.")
                 pass
             
             raise commands.BadArgument(f'Member "{argument}" not found.')
@@ -70,7 +72,7 @@ class Melbot():
             try:
                 item_id = int(item_id)
             except ValueError:
-                print("Conversion to int failed")
+                logging.debug(f"Failed to convert {item_id} to int. {item_id} is of type {type(item_id)}")
 
             if type(item_id) == int:
                 item_price = self.db.buy_items_by_id(item_id)
@@ -150,7 +152,7 @@ class Melbot():
             try:
                 item_id = int(item_id)
             except ValueError:
-                print("Conversion to int failed")
+                logging.debug(f"Failed to convert {item_id} to int. {item_id} is of type {type(item_id)}")
             if type(item_id) == int:
                 rows_deleted = self.db.remove_item_by_id(item_id)
             elif type(item_id) == str:
