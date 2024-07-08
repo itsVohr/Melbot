@@ -5,6 +5,7 @@ import logging
 from utils import gamba
 from discord.ext import commands
 from db_stuff.db_helper import DBHelper
+from datetime import datetime
 
 class SafeMember(commands.Converter):
     async def convert(self, ctx, argument):
@@ -35,6 +36,7 @@ class Melbot():
         self.bot = commands.Bot(command_prefix=command_prefix, intents=self.intents)
         self.db = DBHelper()
         self.db.create_db()
+        self.cooldowns = {"message": {}}
 
     def run(self):
         logging.info("Initating Melbot...") 
@@ -51,6 +53,13 @@ class Melbot():
             if message.author == self.bot.user:
                 return
             if not message.content.startswith(self.bot.command_prefix):
+                # get current timestamp in seconds
+                current_time = datetime.now().timestamp()
+                # check if user has sent a message in the last 2 seconds
+                if message.author.id in self.cooldowns["message"]:
+                    if current_time - self.cooldowns["message"][message.author.id] < 2:
+                        return
+                self.cooldowns["message"].update({message.author.id: current_time})
                 self.db.add_event(message.author.id, 1, 'message')
             await self.bot.process_commands(message)
 
@@ -60,7 +69,12 @@ class Melbot():
         async def help(ctx):
             embed = discord.Embed(title="Melbot Help", description="List of available commands")
             for command in self.bot.commands:
-                if await command.can_run(ctx):
+                can_run = True
+                try:
+                    await command.can_run(ctx)
+                except commands.CommandError:
+                    can_run = False
+                if can_run:
                     embed.add_field(name=f"{self.bot.command_prefix}{command.name}", value=command.help or "No description", inline=False)
             await ctx.send(embed=embed)
 
