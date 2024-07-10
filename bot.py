@@ -6,6 +6,7 @@ from utils import gamba
 from discord.ext import commands
 from db_stuff.db_helper import DBHelper
 from datetime import datetime
+from discord.errors import NotFound
 
 class SafeMember(commands.Converter):
     async def convert(self, ctx, argument):
@@ -149,6 +150,24 @@ class Melbot():
                 await ctx.send(f"You lost {points} points.")
             else:
                 await ctx.send(f"You won {earned_points} points.")
+
+        @self.bot.command(help="Display the leaderboard.")
+        async def leaderboard(ctx):
+            leaderboard = self.db.get_leaderboard()
+            if len(leaderboard) == 0:
+                await ctx.send("The leaderboard is empty.")
+                return
+            leaderboard_str = "Leaderboard:\n"
+            for idx, user in enumerate(leaderboard):
+                user_id = user[0]  # user[0] contains the user ID
+                points = user[1]  # user[1] contains the points
+                try:
+                    member = await ctx.guild.fetch_member(int(user_id))  # Attempt to fetch the member object using the user ID
+                    username = member.display_name  # Get the username from the member object
+                except NotFound:
+                    username = "User not found"  # Placeholder or handling for when the user is not found
+                leaderboard_str += f"{idx + 1}. {username}: {points}\n"
+            await ctx.send(leaderboard_str)
 
         # admin commands
         @self.bot.command(help="Add an item to the shop. You can use !add_item <item_name> <item_price> to add an item to the shop.")

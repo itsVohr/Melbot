@@ -9,16 +9,11 @@ from bot import Melbot
 """
 Change points to melpoints.
 Add daily login reward and daily streak.
-Add cooldown for point allocation.
-Assign a virtual currency to each user based on their server activity.
--- Done for messages. Which other activities should be tracked? --> daily logins and streaks.
--- Should there be a daily limit?
--- Should be exclude messages in certain channels?
 Sanitize inputs.
 Optional: There is a web interface to manage the shop.
 Optional: There is a web interface to manage currency.
 Optional: Users can also gift currency to other users?
-Optional: Add logging.
+Optional: Improve logging.
 Optional: Create a table with aggregated currency data for each user.
 """
 
