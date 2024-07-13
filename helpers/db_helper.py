@@ -1,10 +1,11 @@
 import sqlite3
+import aiosqlite
 from datetime import datetime, timezone
 
 
 class DBHelper:
-    def __init__(self, db_name='melbot.db'):
-        self.conn = sqlite3.connect(db_name)
+    def __init__(self, db_name):
+        self.conn = sqlite3.connect(db_name+".db")
         self.c = self.conn.cursor()
 
     def create_db(self):
@@ -23,7 +24,8 @@ class DBHelper:
                     (
                         item_id integer PRIMARY KEY,
                         item_name text,
-                        item_price integer
+                        item_price integer,
+                        item_file text
                     )
         ''')
         self.c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_item_id ON shop(item_id)')
@@ -85,9 +87,9 @@ class DBHelper:
         self.c.execute(query, (userid, event_timestamp, currency_change, reason))
         self.conn.commit()
 
-    def add_item(self, item_name: str, item_price: int):
-        query = 'INSERT INTO shop (item_name, item_price) VALUES (?, ?)'
-        self.c.execute(query, (item_name, item_price))
+    def add_item(self, item_name: str, item_price: int, item_file: str):
+        query = 'INSERT INTO shop (item_name, item_price, item_file) VALUES (?, ?, ?)'
+        self.c.execute(query, (item_name, item_price, item_file))
         self.conn.commit()
 
     def remove_item_by_id(self, item_id: int):
@@ -122,19 +124,19 @@ class DBHelper:
         return live_currency + aggregated_currency
 
     def buy_items_by_id(self, item_id: int):
-        query = 'SELECT item_price FROM shop WHERE item_id=?'
+        query = 'SELECT item_price, item_file FROM shop WHERE item_id=?'
         self.c.execute(query, (item_id,))
         result = self.c.fetchone()
-        return result[0] if result else None
+        return result if result else None
         
     def buy_items_by_name(self, item_name: str):
-        query = 'SELECT item_price FROM shop WHERE item_name=?'
+        query = 'SELECT item_price, item_file FROM shop WHERE item_name=?'
         self.c.execute(query, (item_name,))
         result = self.c.fetchone()
-        return result[0] if result else None
+        return result if result else None
         
     def get_shop_items(self):
-        self.c.execute('SELECT * FROM shop')
+        self.c.execute('SELECT item_id, item_name, item_price FROM shop')
         return self.c.fetchall()
     
     def get_leaderboard(self, limit: int = 10):
@@ -158,14 +160,47 @@ class DBHelper:
         '''
         self.c.execute(query, (limit,))
         return self.c.fetchall()
+    
+    async def aggregate_points_async(self, cutoff_timestamp):
+        async with aiosqlite.connect('melbot.db') as adb:
+            # Create a temporary table to hold the aggregated points
+            await adb.execute('''
+                CREATE TEMPORARY TABLE total_points AS
+                    SELECT userid, SUM(currency_change) AS currency_change, MAX(event_timestamp) AS event_timestamp
+                    FROM events
+                    WHERE event_timestamp < ?
+                    GROUP BY userid;
+            ''', (cutoff_timestamp,))
+            # Insert new aggregated points into points_agg
+            await adb.execute('''
+                INSERT INTO points_agg (userid, total_points, last_update)
+                SELECT userid, currency_change, event_timestamp
+                FROM total_points
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM points_agg
+                    WHERE points_agg.userid = total_points.userid
+                );
+            ''')
+            # Update existing records in points_agg with new aggregated points
+            await adb.execute('''
+                UPDATE points_agg
+                SET total_points = (SELECT currency_change FROM total_points WHERE points_agg.userid = total_points.userid),
+                    last_update = (SELECT event_timestamp FROM total_points WHERE points_agg.userid = total_points.userid)
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM total_points
+                    WHERE points_agg.userid = total_points.userid
+                    AND points_agg.last_update < total_points.event_timestamp
+                );
+            ''')
+            # Drop the temporary table
+            await adb.execute('DROP TABLE total_points;')
+            await adb.commit()
+
+            # Delete events that have been aggregated
+            await adb.execute('DELETE FROM events WHERE event_timestamp < ?', (cutoff_timestamp,))
+            await adb.commit()
 
     def close(self):
         self.conn.close()
-
-
-if __name__ == "__main__":
-    db = DBHelper()
-    db.create_db()
-    print(db.get_live_currency(267036881038999553))
-    print(db.get_live_currency(361152326574145538))
-    print(db.get_leaderboard(10))

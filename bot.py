@@ -3,8 +3,9 @@ import discord
 import asyncio
 import logging
 from utils import gamba
-from discord.ext import commands
-from db_stuff.db_helper import DBHelper
+from discord.ext import commands, tasks
+from helpers.db_helper import DBHelper
+from helpers.gdrive_helper import GDriveHelper
 from datetime import datetime
 from discord.errors import NotFound
 
@@ -30,25 +31,46 @@ class SafeMember(commands.Converter):
 
 
 class Melbot():
-    def __init__(self, command_prefix:str='!'):
+    def __init__(self, command_prefix:str='?'):
+        self.db = DBHelper(os.environ['DB_NAME'])
+        self.db.create_db()
+        self.gdrive = GDriveHelper()
         self.discord_token = os.environ['DISCORD_TOKEN']
         self.intents = discord.Intents.default()
         self.intents.message_content = True
         self.bot = commands.Bot(command_prefix=command_prefix, intents=self.intents)
-        self.db = DBHelper()
-        self.db.create_db()
         self.cooldowns = {"message": {}}
 
     def run(self):
         logging.info("Initating Melbot...") 
         self.add_bot_events()
         self.bot.run(self.discord_token)
+        self.aggregate_points_task.cancel()
 
-    def db_close(self):
-        self.db.close()
+    def _file_in_drive(self, file_name):
+        files = self.gdrive.get_files()
+        for file in files:
+            if file['name'] == file_name:
+                return True
+        return False
 
-    # bot events
+    @tasks.loop(hours=24)
+    async def aggregate_points_task(self):
+        cutoff_timestamp = datetime.now().timestamp() - 24 * 60 * 60
+        await self.db.aggregate_points_async(cutoff_timestamp)
+        logging.info("Aggregated points successfully.")
+
+
+    @aggregate_points_task.before_loop
+    async def before_aggregate_points_task(self):
+        await self.bot.wait_until_ready()
+
     def add_bot_events(self):
+        # --- bot events ---
+        @self.bot.event
+        async def on_ready():
+            self.aggregate_points_task.start()
+
         @self.bot.event
         async def on_message(message):
             if message.author == self.bot.user:
@@ -64,7 +86,7 @@ class Melbot():
                 self.db.add_event(message.author.id, 1, 'message')
             await self.bot.process_commands(message)
 
-        # remove built-in help command and add custom help command
+        # --- bot commands ---
         self.bot.remove_command('help')
         @self.bot.command()
         async def help(ctx):
@@ -100,9 +122,9 @@ class Melbot():
                 logging.debug(f"Failed to convert {item_id} to int. {item_id} is of type {type(item_id)}")
 
             if type(item_id) == int:
-                item_price = self.db.buy_items_by_id(item_id)
+                (item_price, item_file) = self.db.buy_items_by_id(item_id)
             elif type(item_id) == str:
-                item_price = self.db.buy_items_by_name(item_id)
+                (item_price, item_file) = self.db.buy_items_by_name(item_id)
             else:
                 await ctx.send("Wrong syntax, it should be like this '!buy 1', or '!buy gen'")
                 return
@@ -111,17 +133,27 @@ class Melbot():
                 await ctx.send("The item does not exist.")
                 return
 
+            if not self._file_in_drive(item_file):
+                await ctx.send(f"Item {item_id} doesn't have a valid file. Please contact an admin.")
+                return
+
             user_points = self.db.get_total_currency(user_id)
             
             if user_points < item_price:
                 await ctx.send(f"You do not have enough melpoints to buy this item. You have {user_points} melpoints but need {item_price}.")
                 return
+            
+            file_list = self.gdrive.get_files()
+            for file in file_list:
+                if file['name'] == item_file:
+                    file_link = file['webViewLink']
+                    break
 
             self.db.add_event(user_id, item_price * -1, f"bought item {item_id}")
-            await ctx.send(f"You have successfully bought the item with ID {item_id} for {item_price} melpoints.")
+            await ctx.send(f"You have successfully bought the item {item_id} for {item_price} melpoints.")
             shop_channel_id = await self.bot.fetch_channel(os.environ['SHOP_CHANNEL_ID'])
-            await shop_channel_id.send(f"{ctx.author.mention} has bought the item with ID {item_id} for {item_price} melpoints.")
-            await ctx.author.send(f"You have successfully bought the item with ID {item_id} for {item_price} melpoints.")
+            await shop_channel_id.send(f"{ctx.author.mention} has bought the item {item_id} for {item_price} melpoints.")
+            await ctx.author.send(f"You have successfully bought the item {item_id} for {item_price} melpoints.\nYou can download the file [here]({file_link}).")
 
         @self.bot.command(help="Display the shop items.")
         async def shop(ctx):
@@ -159,27 +191,30 @@ class Melbot():
                 return
             leaderboard_str = "Leaderboard:\n"
             for idx, user in enumerate(leaderboard):
-                user_id = user[0]  # user[0] contains the user ID
-                points = user[1]  # user[1] contains the points
+                user_id = user[0]
+                points = user[1]
                 try:
-                    member = await ctx.guild.fetch_member(int(user_id))  # Attempt to fetch the member object using the user ID
-                    username = member.display_name  # Get the username from the member object
+                    member = await ctx.guild.fetch_member(int(user_id))
+                    username = member.display_name
                 except NotFound:
-                    username = "User not found"  # Placeholder or handling for when the user is not found
+                    username = "User not found"
                 leaderboard_str += f"{idx + 1}. {username}: {points}\n"
             await ctx.send(leaderboard_str)
 
-        # admin commands
-        @self.bot.command(help="Add an item to the shop. You can use !add_item <item_name> <item_price> to add an item to the shop.")
+        # --- admin commands ---
+        @self.bot.command(help="Add an item to the shop. You can use !add_item <item_name> <item_price> <item_file> to add an item to the shop.")
         @commands.has_permissions(administrator=True)
-        async def add_item(ctx, item_name: str = None, item_price: int = None):
-            if item_name is None or item_price is None:
-                await ctx.send("Please provide an item name and price.")
+        async def add_item(ctx, item_name: str = None, item_price: int = None, item_file: str = None):
+            if item_name is None or item_price is None or item_file is None:
+                await ctx.send("Please provide an item name, price, and file.")
                 return
-            if type(item_price) != int or type(item_name) != str:
-                await ctx.send("Wrong syntax, it should be like this ""!add_item gen 500")
+            if type(item_price) != int or type(item_name) != str or type(item_file) != str:
+                await ctx.send("Wrong syntax, it should be like this ""!add_item gen 500 mel.png")
                 return
-            self.db.add_item(item_name, item_price)
+            if not self._file_in_drive(item_file):
+                await ctx.send(f"File {item_file} not found in Google Drive.")
+                return
+            self.db.add_item(item_name, item_price, item_file)
             await ctx.send(f"Item {item_name} added to the shop with price {item_price} points.")
 
         @self.bot.command(help="Add melpoints to a user's account. You can use !add @user <number> to add melpoints to a user's account.")

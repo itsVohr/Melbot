@@ -32,7 +32,7 @@ melbot = Melbot()
 # Function to handle graceful shutdown
 def shutdown_handler(signum, frame):
     logging.info("Process termination requested, shutting down Melbot...")
-    melbot.db_close()
+    melbot.db.close()
     sys.exit(0)
 
 # Register signal handlers for graceful shutdown
@@ -43,4 +43,4 @@ signal.signal(signal.SIGTERM, shutdown_handler)  # Handle termination signal
 try:
     melbot.run()
 finally:
-    melbot.db_close()
+    melbot.db.close()
