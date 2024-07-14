@@ -25,7 +25,9 @@ class DBHelper:
                         item_id integer PRIMARY KEY,
                         item_name text,
                         item_price integer,
-                        item_file text
+                        item_file text,
+                        item_description text
+                        item_description text
                     )
         ''')
         self.c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_item_id ON shop(item_id)')
@@ -87,9 +89,9 @@ class DBHelper:
         self.c.execute(query, (userid, event_timestamp, currency_change, reason))
         self.conn.commit()
 
-    def add_item(self, item_name: str, item_price: int, item_file: str):
-        query = 'INSERT INTO shop (item_name, item_price, item_file) VALUES (?, ?, ?)'
-        self.c.execute(query, (item_name, item_price, item_file))
+    def add_item(self, item_name: str, item_price: int, item_description: str, item_file: str):
+        query = 'INSERT INTO shop (item_name, item_price, item_description, item_file) VALUES (?, ?, ?, ?)'
+        self.c.execute(query, (item_name, item_price, item_description, item_file))
         self.conn.commit()
 
     def remove_item_by_id(self, item_id: int):
@@ -136,7 +138,7 @@ class DBHelper:
         return result if result else None
         
     def get_shop_items(self):
-        self.c.execute('SELECT item_id, item_name, item_price FROM shop')
+        self.c.execute('SELECT item_id, item_name, item_price, item_description FROM shop')
         return self.c.fetchall()
     
     def get_leaderboard(self, limit: int = 10):
@@ -204,11 +206,3 @@ class DBHelper:
 
     def close(self):
         self.conn.close()
-
-
-if __name__ == "__main__":
-    import dotenv
-    dotenv.load_dotenv()
-    db = DBHelper("melbot")
-    item = db.buy_items_by_id(4)
-    print(item)

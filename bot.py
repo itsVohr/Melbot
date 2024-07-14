@@ -165,10 +165,14 @@ class Melbot():
             if len(items) == 0:
                 await ctx.send("The shop is empty.")
                 return
-            shop_str = "Shop items:\n"
+            embed = discord.Embed(title="Shop Items", description="Shop items:", color=0x0000aa)
+            table_header = f"{'ID':<5} | {'Name':<10} | {'Price':<10} | {'Description'}\n"
+            table_divider = f"{'-'*5}-+-{'-'*10}-+-{'-'*10}-+-{'-'*22}\n"
+            table_rows = ""
             for item in items:
-                shop_str += f"ID: {item[0]}, Name: {item[1]}, Price: {item[2]}\n"
-            await ctx.send(shop_str)
+                table_rows += f"{item[0]:<5} | {item[1]:<10} | {item[2]:<10} | {item[3]}\n"
+            embed.add_field(name="Items", value=f"```{table_header}{table_divider}{table_rows}```", inline=False)
+            await ctx.send(embed=embed)
 
         @self.bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
         async def gamble(ctx, points: int):
@@ -230,14 +234,14 @@ class Melbot():
             await ctx.send(embed=embed)
 
         # --- admin commands ---
-        @self.bot.command(help="Add an item to the shop. You can use !add_item <item_name> <item_price> <optional:item_file> to add an item to the shop.")
+        @self.bot.command(help='Add an item to the shop. You can use !add_item <item_name> <item_price> <"item description"> <optional:item_file> to add an item to the shop.')
         @commands.has_permissions(administrator=True)
-        async def add_item(ctx, item_name: str = None, item_price: int = None, item_file: str = None):
-            if item_name is None or item_price is None:
-                await ctx.send("Please provide an item name and price.")
+        async def add_item(ctx, item_name: str = None, item_price: int = None, item_description: str = None, item_file: str = None):
+            if item_name is None or item_price is None or item_description is None:
+                await ctx.send("Please provide an item name, price, and description.")
                 return
-            if type(item_price) != int or type(item_name) != str:
-                await ctx.send("Wrong syntax, it should be like this ""!add_item gen 500 mel.png")
+            if type(item_price) != int or type(item_name) != str or type(item_description) != str:
+                await ctx.send("Wrong syntax, it should be like this ""!add_item gen 500 \"nice gen\" mel.png")
                 return
             if item_file is not None:
                 if not self._file_in_drive(item_file):
@@ -245,7 +249,7 @@ class Melbot():
                     return
             else:
                 item_file = ''
-            self.db.add_item(item_name, item_price, item_file)
+            self.db.add_item(item_name, item_price, item_description, item_file)
             await ctx.send(f"Item {item_name} added to the shop with price {item_price} points.")
 
         @self.bot.command(help="Add melpoints to a user's account. You can use !add @user <number> to add melpoints to a user's account.")
