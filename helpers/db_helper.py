@@ -124,13 +124,13 @@ class DBHelper:
         return live_currency + aggregated_currency
 
     def buy_items_by_id(self, item_id: int):
-        query = 'SELECT item_price, item_file FROM shop WHERE item_id=?'
+        query = "SELECT item_price, coalesce(item_file, '') as item_file FROM shop WHERE item_id=?"
         self.c.execute(query, (item_id,))
         result = self.c.fetchone()
         return result if result else None
         
     def buy_items_by_name(self, item_name: str):
-        query = 'SELECT item_price, item_file FROM shop WHERE item_name=?'
+        query = "SELECT item_price, coalesce(item_file, '') as item_file FROM shop WHERE item_name=?"
         self.c.execute(query, (item_name,))
         result = self.c.fetchone()
         return result if result else None
@@ -204,3 +204,11 @@ class DBHelper:
 
     def close(self):
         self.conn.close()
+
+
+if __name__ == "__main__":
+    import dotenv
+    dotenv.load_dotenv()
+    db = DBHelper("melbot")
+    item = db.buy_items_by_id(4)
+    print(item)

@@ -31,7 +31,7 @@ class SafeMember(commands.Converter):
 
 
 class Melbot():
-    def __init__(self, command_prefix:str='?'):
+    def __init__(self, command_prefix:str='!'):
         self.db = DBHelper(os.environ['DB_NAME'])
         self.db.create_db()
         self.gdrive = GDriveHelper()
@@ -132,28 +132,32 @@ class Melbot():
             if item_price is None:
                 await ctx.send("The item does not exist.")
                 return
-
-            if not self._file_in_drive(item_file):
-                await ctx.send(f"Item {item_id} doesn't have a valid file. Please contact an admin.")
-                return
+            
+            if item_file == '':
+                link_message = ''
+            else:
+                if not self._file_in_drive(item_file):
+                    await ctx.send(f"Item {item_id} doesn't have a valid file. Please contact an admin.")
+                    return
+                file_list = self.gdrive.get_files()
+                for file in file_list:
+                    if file['name'] == item_file:
+                        file_link = file['webViewLink']
+                        break             
+                link_message = f"\nYou can download the file [here]({file_link})."
+                
 
             user_points = self.db.get_total_currency(user_id)
             
             if user_points < item_price:
                 await ctx.send(f"You do not have enough melpoints to buy this item. You have {user_points} melpoints but need {item_price}.")
                 return
-            
-            file_list = self.gdrive.get_files()
-            for file in file_list:
-                if file['name'] == item_file:
-                    file_link = file['webViewLink']
-                    break
 
             self.db.add_event(user_id, item_price * -1, f"bought item {item_id}")
             await ctx.send(f"You have successfully bought the item {item_id} for {item_price} melpoints.")
             shop_channel_id = await self.bot.fetch_channel(os.environ['SHOP_CHANNEL_ID'])
             await shop_channel_id.send(f"{ctx.author.mention} has bought the item {item_id} for {item_price} melpoints.")
-            await ctx.author.send(f"You have successfully bought the item {item_id} for {item_price} melpoints.\nYou can download the file [here]({file_link}).")
+            await ctx.author.send(f"You have successfully bought the item {item_id} for {item_price} melpoints."+link_message)
 
         @self.bot.command(help="Display the shop items.")
         async def shop(ctx):
@@ -202,18 +206,21 @@ class Melbot():
             await ctx.send(leaderboard_str)
 
         # --- admin commands ---
-        @self.bot.command(help="Add an item to the shop. You can use !add_item <item_name> <item_price> <item_file> to add an item to the shop.")
+        @self.bot.command(help="Add an item to the shop. You can use !add_item <item_name> <item_price> <optional:item_file> to add an item to the shop.")
         @commands.has_permissions(administrator=True)
         async def add_item(ctx, item_name: str = None, item_price: int = None, item_file: str = None):
-            if item_name is None or item_price is None or item_file is None:
-                await ctx.send("Please provide an item name, price, and file.")
+            if item_name is None or item_price is None:
+                await ctx.send("Please provide an item name and price.")
                 return
-            if type(item_price) != int or type(item_name) != str or type(item_file) != str:
+            if type(item_price) != int or type(item_name) != str:
                 await ctx.send("Wrong syntax, it should be like this ""!add_item gen 500 mel.png")
                 return
-            if not self._file_in_drive(item_file):
-                await ctx.send(f"File {item_file} not found in Google Drive.")
-                return
+            if item_file is not None:
+                if not self._file_in_drive(item_file):
+                    await ctx.send(f"File {item_file} not found in Google Drive.")
+                    return
+            else:
+                item_file = ''
             self.db.add_item(item_name, item_price, item_file)
             await ctx.send(f"Item {item_name} added to the shop with price {item_price} points.")
 
@@ -253,3 +260,5 @@ class Melbot():
             user_id = str(user.id)
             self.db.add_event(user_id, points * -1, 'admin removed')
             await ctx.send(f"{points} points removed from {user.name}'s account.")
+
+
