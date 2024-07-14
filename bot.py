@@ -205,6 +205,30 @@ class Melbot():
                 leaderboard_str += f"{idx + 1}. {username}: {points}\n"
             await ctx.send(leaderboard_str)
 
+        @self.bot.command(help="Display information about this bot.")
+        async def about(ctx):
+            embed = discord.Embed(
+                title="About Melbot",
+                description="Madamme Melanie's custom Discord bot ♥",
+                color=0x3498db
+            )
+            embed.add_field(
+                name="Author",
+                value="[Vohr](https://x.com/itsvohr)",
+                inline=False
+            )
+            embed.add_field(
+                name="Version",
+                value=os.environ['VERSION'],
+                inline=False
+            )
+            embed.add_field(
+                name="Source code",
+                value="[GitHub Repo](https://github.com/itsVohr/Melbot)",
+                inline=False
+            )
+            await ctx.send(embed=embed)
+
         # --- admin commands ---
         @self.bot.command(help="Add an item to the shop. You can use !add_item <item_name> <item_price> <optional:item_file> to add an item to the shop.")
         @commands.has_permissions(administrator=True)

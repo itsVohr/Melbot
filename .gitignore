@@ -1,4 +1,5 @@
 melbot_service_account.json
 .env
 *.pyc
+*.sh
 downloads/*
