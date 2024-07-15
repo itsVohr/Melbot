@@ -9,6 +9,9 @@ from helpers.gdrive_helper import GDriveHelper
 from datetime import datetime
 from discord.errors import NotFound
 
+class NotBotAdmin(commands.CheckFailure):
+    pass
+
 class SafeMember(commands.Converter):
     async def convert(self, ctx, argument):
         try:
@@ -46,6 +49,13 @@ class Melbot():
         self.add_bot_events()
         self.bot.run(self.discord_token)
         self.aggregate_points_task.cancel()
+
+    def is_bot_admin(self):
+        async def predicate(ctx):
+            if ctx.author.id != int(os.environ['BOT_ADMIN_ID']):
+                raise NotBotAdmin()
+            return True
+        return commands.check(predicate)
 
     def _file_in_drive(self, file_name):
         files = self.gdrive.get_files()
@@ -88,16 +98,19 @@ class Melbot():
 
         # --- bot commands ---
         self.bot.remove_command('help')
-        @self.bot.command()
+        @self.bot.command(help="Display the help message.")
         async def help(ctx):
             embed = discord.Embed(title="Melbot Help", description="List of available commands")
             for command in self.bot.commands:
                 can_run = True
                 try:
+                    print(command.name)
                     await command.can_run(ctx)
-                except commands.CommandError:
+                except (NotBotAdmin, commands.CommandError):
+                    print(f"Command {command.name} cannot run.")
                     can_run = False
                 if can_run:
+                    print(f"Command {command.name} can run.")
                     embed.add_field(name=f"{self.bot.command_prefix}{command.name}", value=command.help or "No description", inline=False)
             await ctx.send(embed=embed)
 
@@ -232,7 +245,7 @@ class Melbot():
 
         # --- admin commands ---
         @self.bot.command(help='Add an item to the shop. You can use !add_item <item_name> <item_price> <"item description"> <optional:item_file> to add an item to the shop.')
-        @commands.has_permissions(administrator=True)
+        @self.is_bot_admin()
         async def add_item(ctx, item_name: str = None, item_price: int = None, item_description: str = None, item_file: str = None):
             if item_name is None or item_price is None or item_description is None:
                 await ctx.send("Please provide an item name, price, and description.")
@@ -250,14 +263,14 @@ class Melbot():
             await ctx.send(f"Item {item_name} added to the shop with price {item_price} points.")
 
         @self.bot.command(help="Add melpoints to a user's account. You can use !add @user <number> to add melpoints to a user's account.")
-        @commands.has_permissions(administrator=True)
+        @self.is_bot_admin()
         async def add(ctx, user: SafeMember, points: int):
             user_id = str(user.id)
             self.db.add_event(user_id, points, 'admin added')
             await ctx.send(f"{points} points added to {user.name}'s account.")
 
         @self.bot.command(help="Remove an item from the shop. You can use !remove_item <item_id> to remove an item by its ID, or !remove_item <item_name> to remove an item by its name.")
-        @commands.has_permissions(administrator=True)
+        @self.is_bot_admin()
         async def remove_item(ctx, item_id: str):
             if item_id is None:
                 await ctx.send("Please provide an item ID.")
@@ -280,7 +293,7 @@ class Melbot():
                 await ctx.send(f"Item with ID {item_id} removed from the shop.")
 
         @self.bot.command(help="Remove melpoints from a user's account. You can use !remove @user <number> to remove melpoints from a user's account.")
-        @commands.has_permissions(administrator=True)
+        @self.is_bot_admin()
         async def remove(ctx, user: SafeMember, points: int):
             user_id = str(user.id)
             self.db.add_event(user_id, points * -1, 'admin removed')

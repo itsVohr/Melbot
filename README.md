@@ -38,6 +38,7 @@ Follow these steps to install Melbot in your desired directory:
 	 - `DISCORD_TOKEN`: Your Discord bot token.
 	 - `SHOP_CHANNEL_ID`: The ID of the Discord channel where the bot will post notifications about item purchases.
 	 - `GDRIVE_FOLDER_ID`: The ID of the Google Drive folder Melbot will interact with.
+	 - `BOT_ADMIN_ID`: The ID of the bot administrator.
 
 5. **Set Up Google Service Account**
    - Create a Google service account with the appropriate permissions to access your Google Drive.
