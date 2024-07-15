@@ -165,13 +165,10 @@ class Melbot():
             if len(items) == 0:
                 await ctx.send("The shop is empty.")
                 return
-            embed = discord.Embed(title="Shop Items", description="Shop items:", color=0x0000aa)
-            table_header = f"{'ID':<5} | {'Name':<10} | {'Price':<10} | {'Description'}\n"
-            table_divider = f"{'-'*5}-+-{'-'*10}-+-{'-'*10}-+-{'-'*22}\n"
-            table_rows = ""
+            embed = discord.Embed(title="Madamme Melanie's Shop", color=discord.Color.blue())
             for item in items:
-                table_rows += f"{item[0]:<5} | {item[1]:<10} | {item[2]:<10} | {item[3]}\n"
-            embed.add_field(name="Items", value=f"```{table_header}{table_divider}{table_rows}```", inline=False)
+                item_details = f"> **Item ID**: {item[0]}\n> **Price**: {item[2]} coins\n> **Description**: {item[3]}"
+                embed.add_field(name=f"**{item[1]}**", value=item_details, inline=False)
             await ctx.send(embed=embed)
 
         @self.bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
