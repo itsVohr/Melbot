@@ -96,7 +96,7 @@ class Melbot():
                         return
                 self.cooldowns["message"].update({message.author.id: current_time})
                 await self.db.add_event(message.author.id, 1, 'message')
-            if message.channel.id == int(os.environ['BOT_COMMANDS_CHANNEL_ID']):
+            if message.channel.id == int(os.environ['BOT_COMMANDS_CHANNEL_ID']) or message.author.id == int(os.environ['BOT_ADMIN_ID']):
                 await self.bot.process_commands(message)
 
         # --- bot commands ---
