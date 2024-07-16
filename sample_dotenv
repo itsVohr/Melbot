@@ -7,3 +7,4 @@ GOOGLE_SERVICE_ACCOUNT=Melbot/melbot_service_account.json
 GDRIVE_FOLDER_ID=id_of_your_main_gdrive_folder
 DOWNLOAD_FOLDER=Melbot/downloads
 VERSION=dev
+GAMBLE_LIMIT=5000

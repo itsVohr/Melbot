@@ -185,9 +185,18 @@ class Melbot():
             await ctx.send(embed=embed)
 
         @self.bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
-        async def gamble(ctx, points: int):
+        async def gamble(ctx, points: int|str):
             user_id = str(ctx.author.id)
             user_points = await self.db.get_total_currency(user_id)
+            # Handle string inputs
+            if type(points) == str:
+                if points.lower() == 'all':
+                    points = user_points
+                elif points.lower() == 'half':
+                    points = user_points // 2
+                else:
+                    await ctx.send("Wrong syntax, it should be like this '!gamble 100' or '!gamble all'")
+                    return
             if points > user_points:
                 await ctx.send(f"You do not have enough points to gamble {points} points. You have {user_points} points.")
                 return
@@ -196,6 +205,9 @@ class Melbot():
                 return
             if points == 0:
                 await ctx.send("You cannot gamble 0 points.")
+                return
+            if points > os.getenv('GAMBLE_LIMIT'):
+                await ctx.send(f"You can't bet more than {os.getenv('GAMBLE_LIMIT')} points.")
                 return
             earned_points = gamba(points)
             await self.db.add_event(user_id, earned_points - points, 'gamble')
