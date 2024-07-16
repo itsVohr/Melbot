@@ -89,7 +89,7 @@ class Melbot():
         async def on_message(message):
             if message.author == self.bot.user:
                 return
-            if not message.content.startswith(self.bot.command_prefix):
+            if not message.content.startswith(self.bot.command_prefix) and len(message.content) > 3:
                 current_time = datetime.now().timestamp()
                 if message.author.id in self.cooldowns["message"]:
                     if current_time - self.cooldowns["message"][message.author.id] < 2:
