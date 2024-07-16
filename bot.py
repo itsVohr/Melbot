@@ -194,6 +194,9 @@ class Melbot():
             if points < 0:
                 await ctx.send("You cannot gamble a negative number of points.")
                 return
+            if points == 0:
+                await ctx.send("You cannot gamble 0 points.")
+                return
             earned_points = gamba(points)
             await self.db.add_event(user_id, earned_points - points, 'gamble')
             if earned_points == 0:
