@@ -1,6 +1,7 @@
 DISCORD_TOKEN=your_discord_bot_token
 SHOP_CHANNEL_ID=channel_id_where_the_bot_posts_when_an_item_is_bought
 BOT_ADMIN_ID=your_discord_user_id
+BOT_COMMANDS_CHANNEL_ID=channe_for_commands
 DB_NAME=melbot
 GOOGLE_SERVICE_ACCOUNT=Melbot/melbot_service_account.json
 GDRIVE_FOLDER_ID=id_of_your_main_gdrive_folder
