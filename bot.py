@@ -36,7 +36,6 @@ class SafeMember(commands.Converter):
 class Melbot():
     def __init__(self, command_prefix:str='!'):
         self.db = DBHelper(os.environ['DB_NAME'])
-        self.db.create_db()
         self.gdrive = GDriveHelper()
         self.discord_token = os.environ['DISCORD_TOKEN']
         self.intents = discord.Intents.default()
@@ -44,10 +43,15 @@ class Melbot():
         self.bot = commands.Bot(command_prefix=command_prefix, intents=self.intents)
         self.cooldowns = {"message": {}}
 
-    def run(self):
+    async def initialize(self):
+        await self.db.initialize()
+        await self.db.create_db()
+
+    async def run(self):
         logging.info("Initating Melbot...") 
-        self.add_bot_events()
-        self.bot.run(self.discord_token)
+        await self.initialize()
+        await self.add_bot_events()
+        await self.bot.start(self.discord_token)
         self.aggregate_points_task.cancel()
 
     def is_bot_admin(self):
@@ -75,7 +79,7 @@ class Melbot():
     async def before_aggregate_points_task(self):
         await self.bot.wait_until_ready()
 
-    def add_bot_events(self):
+    async def add_bot_events(self):
         # --- bot events ---
         @self.bot.event
         async def on_ready():
@@ -86,14 +90,12 @@ class Melbot():
             if message.author == self.bot.user:
                 return
             if not message.content.startswith(self.bot.command_prefix):
-                # get current timestamp in seconds
                 current_time = datetime.now().timestamp()
-                # check if user has sent a message in the last 2 seconds
                 if message.author.id in self.cooldowns["message"]:
                     if current_time - self.cooldowns["message"][message.author.id] < 2:
                         return
                 self.cooldowns["message"].update({message.author.id: current_time})
-                self.db.add_event(message.author.id, 1, 'message')
+                await self.db.add_event(message.author.id, 1, 'message')
             await self.bot.process_commands(message)
 
         # --- bot commands ---
@@ -104,13 +106,10 @@ class Melbot():
             for command in self.bot.commands:
                 can_run = True
                 try:
-                    print(command.name)
                     await command.can_run(ctx)
                 except (NotBotAdmin, commands.CommandError):
-                    print(f"Command {command.name} cannot run.")
                     can_run = False
                 if can_run:
-                    print(f"Command {command.name} can run.")
                     embed.add_field(name=f"{self.bot.command_prefix}{command.name}", value=command.help or "No description", inline=False)
             await ctx.send(embed=embed)
 
@@ -119,7 +118,7 @@ class Melbot():
             if user is None:
                 user = ctx.author
             user_id = str(user.id)
-            total_currency = self.db.get_total_currency(user_id)
+            total_currency = await self.db.get_total_currency(user_id)
             await ctx.send(f'{user.name} has {total_currency} points')
 
         @self.bot.command(help="Buy an item from the shop. You can use !buy item_id to buy an item by its ID, or !buy item_name to buy an item by its name.")
@@ -135,9 +134,9 @@ class Melbot():
                 logging.debug(f"Failed to convert {item_id} to int. {item_id} is of type {type(item_id)}")
 
             if type(item_id) == int:
-                (item_price, item_file) = self.db.buy_items_by_id(item_id)
+                (item_price, item_file) = await self.db.buy_items_by_id(item_id)
             elif type(item_id) == str:
-                (item_price, item_file) = self.db.buy_items_by_name(item_id)
+                (item_price, item_file) = await self.db.buy_items_by_name(item_id)
             else:
                 await ctx.send("Wrong syntax, it should be like this '!buy 1', or '!buy gen'")
                 return
@@ -160,13 +159,13 @@ class Melbot():
                 link_message = f"\nYou can download the file [here]({file_link})."
                 
 
-            user_points = self.db.get_total_currency(user_id)
+            user_points = await self.db.get_total_currency(user_id)
             
             if user_points < item_price:
                 await ctx.send(f"You do not have enough melpoints to buy this item. You have {user_points} melpoints but need {item_price}.")
                 return
 
-            self.db.add_event(user_id, item_price * -1, f"bought item {item_id}")
+            await self.db.add_event(user_id, item_price * -1, f"bought item {item_id}")
             await ctx.send(f"You have successfully bought the item {item_id} for {item_price} melpoints.")
             shop_channel_id = await self.bot.fetch_channel(os.environ['SHOP_CHANNEL_ID'])
             await shop_channel_id.send(f"{ctx.author.mention} has bought the item {item_id} for {item_price} melpoints.")
@@ -174,7 +173,7 @@ class Melbot():
 
         @self.bot.command(help="Display the shop items.")
         async def shop(ctx):
-            items = self.db.get_shop_items()
+            items = await self.db.get_shop_items()
             if len(items) == 0:
                 await ctx.send("The shop is empty.")
                 return
@@ -187,7 +186,7 @@ class Melbot():
         @self.bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
         async def gamble(ctx, points: int):
             user_id = str(ctx.author.id)
-            user_points = self.db.get_total_currency(user_id)
+            user_points = await self.db.get_total_currency(user_id)
             if points > user_points:
                 await ctx.send(f"You do not have enough points to gamble {points} points. You have {user_points} points.")
                 return
@@ -195,7 +194,7 @@ class Melbot():
                 await ctx.send("You cannot gamble a negative number of points.")
                 return
             earned_points = gamba(points)
-            self.db.add_event(user_id, earned_points - points, 'gamble')
+            await self.db.add_event(user_id, earned_points - points, 'gamble')
             if earned_points == 0:
                 await ctx.send(f"You lost {points} points.")
             else:
@@ -203,7 +202,7 @@ class Melbot():
 
         @self.bot.command(help="Display the leaderboard.")
         async def leaderboard(ctx):
-            leaderboard = self.db.get_leaderboard()
+            leaderboard = await self.db.get_leaderboard()
             if len(leaderboard) == 0:
                 await ctx.send("The leaderboard is empty.")
                 return
@@ -259,14 +258,14 @@ class Melbot():
                     return
             else:
                 item_file = ''
-            self.db.add_item(item_name, item_price, item_description, item_file)
+            await self.db.add_item(item_name, item_price, item_description, item_file)
             await ctx.send(f"Item {item_name} added to the shop with price {item_price} points.")
 
         @self.bot.command(help="Add melpoints to a user's account. You can use !add @user <number> to add melpoints to a user's account.")
         @self.is_bot_admin()
         async def add(ctx, user: SafeMember, points: int):
             user_id = str(user.id)
-            self.db.add_event(user_id, points, 'admin added')
+            await self.db.add_event(user_id, points, 'admin added')
             await ctx.send(f"{points} points added to {user.name}'s account.")
 
         @self.bot.command(help="Remove an item from the shop. You can use !remove_item <item_id> to remove an item by its ID, or !remove_item <item_name> to remove an item by its name.")
@@ -280,9 +279,9 @@ class Melbot():
             except ValueError:
                 logging.debug(f"Failed to convert {item_id} to int. {item_id} is of type {type(item_id)}")
             if type(item_id) == int:
-                rows_deleted = self.db.remove_item_by_id(item_id)
+                rows_deleted = await self.db.remove_item_by_id(item_id)
             elif type(item_id) == str:
-                rows_deleted = self.db.remove_item_by_name(item_id)
+                rows_deleted = await self.db.remove_item_by_name(item_id)
             else:
                 await ctx.send("Wrong syntax, it should be like this '!remove_item 1' or '!remove_item gen'")
                 return
@@ -296,7 +295,7 @@ class Melbot():
         @self.is_bot_admin()
         async def remove(ctx, user: SafeMember, points: int):
             user_id = str(user.id)
-            self.db.add_event(user_id, points * -1, 'admin removed')
+            await self.db.add_event(user_id, points * -1, 'admin removed')
             await ctx.send(f"{points} points removed from {user.name}'s account.")
 
 
