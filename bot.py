@@ -212,9 +212,9 @@ class Melbot():
             earned_points = gamba(points)
             await self.db.add_event(user_id, earned_points - points, 'gamble')
             if earned_points == 0:
-                await ctx.send(f"You lost {points} points.")
+                await ctx.send(f"{ctx.author} - You lost {points} points.")
             else:
-                await ctx.send(f"You won {earned_points} points.")
+                await ctx.send(f"{ctx.author} - You won {earned_points} points.")
 
         @self.bot.command(help="Display the leaderboard.")
         async def leaderboard(ctx):
