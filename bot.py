@@ -178,7 +178,7 @@ class Melbot():
             if len(items) == 0:
                 await ctx.send("The shop is empty.")
                 return
-            embed = discord.Embed(title="Madamme Melanie's Shop", color=discord.Color.blue())
+            embed = discord.Embed(title="Madame Melanie's Shop", color=discord.Color.blue())
             items = sorted(items, key=lambda x: x[0])
             for item in items:
                 item_details = f"> **Item ID**: {item[0]}\n> **Price**: {item[2]} melpoints\n> **Description**: {item[3]}"
@@ -239,7 +239,7 @@ class Melbot():
         async def about(ctx):
             embed = discord.Embed(
                 title="About Melbot",
-                description="Madamme Melanie's custom Discord bot ♥",
+                description="Madame Melanie's custom Discord bot ♥",
                 color=0x3498db
             )
             embed.add_field(
