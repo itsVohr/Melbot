@@ -165,7 +165,7 @@ class DBHelper:
         query = "SELECT item_price, coalesce(item_file, '') as item_file FROM shop WHERE item_name=?"
         async with self.conn.execute(query, (item_name,)) as cursor:
             result = await cursor.fetchone()
-            return result if result else None
+            return result if result else (None, None)
         
     async def get_shop_items(self):
         async with self.conn.execute('SELECT item_id, item_name, item_price, item_description FROM shop') as cursor:

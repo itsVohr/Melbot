@@ -122,30 +122,23 @@ class Melbot():
             total_currency = await self.db.get_total_currency(user_id)
             await ctx.send(f'{user.name} has {total_currency} points')
 
-        @self.bot.command(help="Buy an item from the shop. You can use !buy item_id to buy an item by its ID, or !buy item_name to buy an item by its name.")
-        async def buy(ctx, item_id = None):
+        @self.bot.command(help="Buy an item from the shop. You can use !buy item_name to buy an item.")
+        async def buy(ctx, item_id: str):
             if item_id is None:
                 await ctx.send("Please provide an item ID.")
                 return
             
-            user_id = str(ctx.author.id)
-            try:
-                item_id = int(item_id)
-            except ValueError:
-                logging.debug(f"Failed to convert {item_id} to int. {item_id} is of type {type(item_id)}")
-
-            if type(item_id) == int:
-                (item_price, item_file) = await self.db.buy_items_by_id(item_id)
-            elif type(item_id) == str:
-                (item_price, item_file) = await self.db.buy_items_by_name(item_id)
-            else:
+            if type(item_id) != str:
                 await ctx.send("Wrong syntax, it should be like this '!buy 1', or '!buy gen'")
                 return
+
+            user_id = str(ctx.author.id)
+            item_price, item_file = await self.db.buy_items_by_name(item_id)              
 
             if item_price is None:
                 await ctx.send("The item does not exist.")
                 return
-            
+
             if item_file == '':
                 link_message = ''
             else:
@@ -157,8 +150,7 @@ class Melbot():
                     if file['name'] == item_file:
                         file_link = file['webViewLink']
                         break             
-                link_message = f"\nYou can download the file [here]({file_link})."
-                
+                link_message = f"\nYou can download the file [here]({file_link})."    
 
             user_points = await self.db.get_total_currency(user_id)
             
@@ -179,9 +171,9 @@ class Melbot():
                 await ctx.send("The shop is empty.")
                 return
             embed = discord.Embed(title="Madame Melanie's Shop", color=discord.Color.blue())
-            items = sorted(items, key=lambda x: x[0])
+            print(f"enumerated_items: {items}")
             for item in items:
-                item_details = f"> **Item ID**: {item[0]}\n> **Price**: {item[2]} melpoints\n> **Description**: {item[3]}"
+                item_details = f"> **Price**: {item[2]} melpoints\n> **Description**: {item[3]}"
                 embed.add_field(name=f"**{item[1]}**", value=item_details, inline=False)
             await ctx.send(embed=embed)
 
