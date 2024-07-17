@@ -207,7 +207,7 @@ class Melbot():
             if points == 0:
                 await ctx.send("You cannot gamble 0 points.")
                 return
-            if points > os.getenv('GAMBLE_LIMIT'):
+            if points > int(os.getenv('GAMBLE_LIMIT')):
                 await ctx.send(f"You can't bet more than {os.getenv('GAMBLE_LIMIT')} points.")
                 return
             earned_points = gamba(points)
