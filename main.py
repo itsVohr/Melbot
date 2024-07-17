@@ -6,16 +6,6 @@ import datetime
 import asyncio
 from bot import Melbot
 
-# Goals for this bot:
-"""
-Add daily login reward and daily streak.
-Optional: There is a web interface to manage the shop.
-Optional: There is a web interface to manage currency.
-Optional: Users can also gift currency to other users?
-Optional: Improve logging.
-"""
-
-
 # Set up logging
 current_date = datetime.datetime.now().strftime("%Y-%m-%d")
 logging.basicConfig(

@@ -71,6 +71,7 @@ class Melbot():
     @tasks.loop(hours=24)
     async def aggregate_points_task(self):
         cutoff_timestamp = datetime.now().timestamp() - 24 * 60 * 60
+        logging.info(f"Aggregating points with timestamp {cutoff_timestamp}...")
         await self.db.aggregate_points_async(cutoff_timestamp)
         logging.info("Aggregated points successfully.")
 
@@ -89,14 +90,14 @@ class Melbot():
         async def on_message(message):
             if message.author == self.bot.user:
                 return
-            if not message.content.startswith(self.bot.command_prefix):
+            if not message.content.startswith(self.bot.command_prefix) and len(message.content) > 3:
                 current_time = datetime.now().timestamp()
                 if message.author.id in self.cooldowns["message"]:
                     if current_time - self.cooldowns["message"][message.author.id] < 2:
                         return
                 self.cooldowns["message"].update({message.author.id: current_time})
                 await self.db.add_event(message.author.id, 1, 'message')
-            if message.channel.id == int(os.environ['BOT_COMMANDS_CHANNEL_ID']):
+            if message.channel.id == int(os.environ['BOT_COMMANDS_CHANNEL_ID']) or message.author.id == int(os.environ['BOT_ADMIN_ID']):
                 await self.bot.process_commands(message)
 
         # --- bot commands ---
@@ -122,30 +123,23 @@ class Melbot():
             total_currency = await self.db.get_total_currency(user_id)
             await ctx.send(f'{user.name} has {total_currency} points')
 
-        @self.bot.command(help="Buy an item from the shop. You can use !buy item_id to buy an item by its ID, or !buy item_name to buy an item by its name.")
-        async def buy(ctx, item_id = None):
+        @self.bot.command(help="Buy an item from the shop. You can use !buy item_name to buy an item.")
+        async def buy(ctx, item_id: str):
             if item_id is None:
                 await ctx.send("Please provide an item ID.")
                 return
             
-            user_id = str(ctx.author.id)
-            try:
-                item_id = int(item_id)
-            except ValueError:
-                logging.debug(f"Failed to convert {item_id} to int. {item_id} is of type {type(item_id)}")
-
-            if type(item_id) == int:
-                (item_price, item_file) = await self.db.buy_items_by_id(item_id)
-            elif type(item_id) == str:
-                (item_price, item_file) = await self.db.buy_items_by_name(item_id)
-            else:
+            if type(item_id) != str:
                 await ctx.send("Wrong syntax, it should be like this '!buy 1', or '!buy gen'")
                 return
+
+            user_id = str(ctx.author.id)
+            item_price, item_file = await self.db.buy_items_by_name(item_id)              
 
             if item_price is None:
                 await ctx.send("The item does not exist.")
                 return
-            
+
             if item_file == '':
                 link_message = ''
             else:
@@ -157,8 +151,7 @@ class Melbot():
                     if file['name'] == item_file:
                         file_link = file['webViewLink']
                         break             
-                link_message = f"\nYou can download the file [here]({file_link})."
-                
+                link_message = f"\nYou can download the file [here]({file_link})."    
 
             user_points = await self.db.get_total_currency(user_id)
             
@@ -178,28 +171,44 @@ class Melbot():
             if len(items) == 0:
                 await ctx.send("The shop is empty.")
                 return
-            embed = discord.Embed(title="Madamme Melanie's Shop", color=discord.Color.blue())
+            embed = discord.Embed(title="Madame Melanie's Shop", color=discord.Color.blue())
+            print(f"enumerated_items: {items}")
             for item in items:
-                item_details = f"> **Item ID**: {item[0]}\n> **Price**: {item[2]} melpoints\n> **Description**: {item[3]}"
+                item_details = f"> **Price**: {item[2]} melpoints\n> **Description**: {item[3]}"
                 embed.add_field(name=f"**{item[1]}**", value=item_details, inline=False)
             await ctx.send(embed=embed)
 
         @self.bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
-        async def gamble(ctx, points: int):
+        async def gamble(ctx, points: int|str):
             user_id = str(ctx.author.id)
             user_points = await self.db.get_total_currency(user_id)
+            # Handle string inputs
+            if type(points) == str:
+                if points.lower() == 'all':
+                    points = user_points
+                elif points.lower() == 'half':
+                    points = user_points // 2
+                else:
+                    await ctx.send("Wrong syntax, it should be like this '!gamble 100' or '!gamble all'")
+                    return
             if points > user_points:
                 await ctx.send(f"You do not have enough points to gamble {points} points. You have {user_points} points.")
                 return
             if points < 0:
                 await ctx.send("You cannot gamble a negative number of points.")
                 return
+            if points == 0:
+                await ctx.send("You cannot gamble 0 points.")
+                return
+            if points > int(os.getenv('GAMBLE_LIMIT')):
+                await ctx.send(f"You can't bet more than {os.getenv('GAMBLE_LIMIT')} points.")
+                return
             earned_points = gamba(points)
             await self.db.add_event(user_id, earned_points - points, 'gamble')
             if earned_points == 0:
-                await ctx.send(f"You lost {points} points.")
+                await ctx.send(f"{ctx.author} - You lost {points} points.")
             else:
-                await ctx.send(f"You won {earned_points} points.")
+                await ctx.send(f"{ctx.author} - You won {earned_points} points.")
 
         @self.bot.command(help="Display the leaderboard.")
         async def leaderboard(ctx):
@@ -223,7 +232,7 @@ class Melbot():
         async def about(ctx):
             embed = discord.Embed(
                 title="About Melbot",
-                description="Madamme Melanie's custom Discord bot ♥",
+                description="Madame Melanie's custom Discord bot ♥",
                 color=0x3498db
             )
             embed.add_field(

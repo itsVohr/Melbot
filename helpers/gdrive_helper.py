@@ -31,15 +31,3 @@ class GDriveHelper:
                 status, done = downloader.next_chunk()
                 print(f"Download {int(status.progress() * 100)}%.")
         return file_name
-
-
-if __name__ == '__main__':
-    import dotenv
-    dotenv.load_dotenv()
-
-    gdrive = GDriveHelper()
-    files = gdrive.get_files()
-    for file in files:
-        print(file)
-
-    gdrive.download_file(destination=os.environ["DOWNLOAD_FOLDER"], file_id='1u2HrBNPaV2o5_E_3bklF5eIW6FJCAkg_')
