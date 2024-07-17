@@ -65,37 +65,35 @@ class DBHelper:
 
     async def aggregate_points(self, cutoff_timestamp):
         async with self.conn.execute('''
-            CREATE TEMPORARY TABLE total_points AS
-                SELECT userid, SUM(currency_change) AS currency_change, MAX(event_timestamp) AS event_timestamp
-                FROM events
-                WHERE event_timestamp < ?
+            CREATE TEMP TABLE total_points AS
+                SELECT userid, SUM(currency_change) AS currency_change
+                FROM (SELECT * FROM events WHERE event_timestamp < ?)
                 GROUP BY userid;
         ''', (cutoff_timestamp,)) as cursor:
             await cursor.close()
 
         async with self.conn.execute('''
+            UPDATE points_agg
+            SET total_points = points_agg.total_points + (SELECT currency_change FROM total_points WHERE points_agg.userid = total_points.userid),
+                last_update = ?
+            WHERE EXISTS (
+                SELECT 1
+                FROM total_points
+                WHERE points_agg.userid = total_points.userid
+            );
+        ''', (cutoff_timestamp,)) as cursor:
+            await cursor.close()
+
+        async with self.conn.execute('''
             INSERT INTO points_agg (userid, total_points, last_update)
-            SELECT userid, currency_change, event_timestamp
+            SELECT userid, currency_change, ?
             FROM total_points
             WHERE NOT EXISTS (
                 SELECT 1
                 FROM points_agg
                 WHERE points_agg.userid = total_points.userid
             );
-        ''') as cursor:
-            await cursor.close()
-
-        async with self.conn.execute('''
-            UPDATE points_agg
-            SET total_points = (SELECT currency_change FROM total_points WHERE points_agg.userid = total_points.userid),
-                last_update = (SELECT event_timestamp FROM total_points WHERE points_agg.userid = total_points.userid)
-            WHERE EXISTS (
-                SELECT 1
-                FROM total_points
-                WHERE points_agg.userid = total_points.userid
-                AND points_agg.last_update < total_points.event_timestamp
-            );
-        ''') as cursor:
+        ''', (cutoff_timestamp,)) as cursor:
             await cursor.close()
 
         async with self.conn.execute('DROP TABLE total_points;') as cursor:
@@ -118,6 +116,14 @@ class DBHelper:
         except Exception as e:
             logging.error(f"Failed to add event: {e}")
 
+    async def _add_event_test(self, userid: str, event_timestamp:int, currency_change: int, reason: str):
+        try:
+            query = 'INSERT INTO events VALUES (?, ?, ?, ?)'
+            async with self.conn.execute(query, (userid, event_timestamp, currency_change, reason)) as cursor:
+                await cursor.close()
+            await self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to add event: {e}")
 
     async def add_item(self, item_name: str, item_price: int, item_description: str, item_file: str):
         query = 'INSERT INTO shop (item_name, item_price, item_description, item_file) VALUES (?, ?, ?, ?)'
@@ -236,3 +242,34 @@ class DBHelper:
 
     def close(self):
         self.conn.close()
+
+
+if __name__ == "__main__":
+    import os
+
+    async def test_db():
+        db = DBHelper("test_melbot")
+        await db.initialize()
+        await db.create_db()
+        await db._add_event_test("u1", 100, 100, "")
+        await db._add_event_test("u1", 200, 200, "")
+        await db._add_event_test("u2", 200, 200, "")
+        await db._add_event_test("u2", 300, 300, "")
+        await db._add_event_test("u3", 300, 300, "")
+        await db._add_event_test("u3", 900, 900, "")
+        await db.aggregate_points(250)
+        t1 = await db.get_aggregated_currency("u1")
+        t2 = await db.get_aggregated_currency("u2")
+        print(t1,t2)
+        # expected: u1: 300, u2: 200
+        await db.aggregate_points(500)
+        # expected: u1: 300, u2: 500, u3: 300
+        t1 = await db.get_aggregated_currency("u1")
+        t2 = await db.get_aggregated_currency("u2")
+        t3 = await db.get_aggregated_currency("u3")
+        print(t1,t2, t3)
+        exit(0)
+        
+    if os.path.exists("test_melbot.db"):
+        os.remove("test_melbot.db")
+    asyncio.run(test_db())

@@ -71,6 +71,7 @@ class Melbot():
     @tasks.loop(hours=24)
     async def aggregate_points_task(self):
         cutoff_timestamp = datetime.now().timestamp() - 24 * 60 * 60
+        logging.info(f"Aggregating points with timestamp {cutoff_timestamp}...")
         await self.db.aggregate_points_async(cutoff_timestamp)
         logging.info("Aggregated points successfully.")
 
