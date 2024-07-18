@@ -43,16 +43,25 @@ class Melbot():
         self.bot = commands.Bot(command_prefix=command_prefix, intents=self.intents)
         self.cooldowns = {"message": {}}
 
+
     async def initialize(self):
         await self.db.initialize()
         await self.db.create_db()
 
     async def run(self):
-        logging.info("Initating Melbot...") 
-        await self.initialize()
-        await self.add_bot_events()
-        await self.bot.start(self.discord_token)
-        self.aggregate_points_task.cancel()
+        try:
+            logging.info("Initating Melbot...") 
+            await self.initialize()
+            await self.add_bot_events()
+            logging.info("Bot is running...")
+            await self.bot.start(self.discord_token)
+            await self.aggregate_points_task.cancel()
+        except asyncio.CancelledError:
+            logging.info("Bot cancelled.")
+
+    async def shutdown(self):
+        logging.info("Shutting down bot...")
+        await self.bot.close()
 
     def is_bot_admin(self):
         async def predicate(ctx):
@@ -172,7 +181,6 @@ class Melbot():
                 await ctx.send("The shop is empty.")
                 return
             embed = discord.Embed(title="Madame Melanie's Shop", color=discord.Color.blue())
-            print(f"enumerated_items: {items}")
             for item in items:
                 item_details = f"> **Price**: {item[2]} melpoints\n> **Description**: {item[3]}"
                 embed.add_field(name=f"**{item[1]}**", value=item_details, inline=False)
