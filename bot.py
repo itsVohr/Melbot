@@ -97,7 +97,7 @@ class Melbot():
 
         @self.bot.event
         async def on_message(message):
-            if message.author == self.bot.user:
+            if (message.author == self.bot.user) or message.author.bot:
                 return
             if not message.content.startswith(self.bot.command_prefix) and len(message.content) > 3:
                 current_time = datetime.now().timestamp()
