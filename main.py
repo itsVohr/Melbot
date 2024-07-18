@@ -1,5 +1,4 @@
 import dotenv
-import signal
 import sys
 import os
 import logging
@@ -41,7 +40,7 @@ def log_active_threads(stage):
 def join_remaining_threads():
     for thread in threading.enumerate():
         if thread is not threading.current_thread():
-            print(f"Joining thread: {thread.name}")
+            logging.info(f"Joining thread: {thread.name}")
             thread.join(timeout=5)
 
 def run_main():
@@ -51,7 +50,7 @@ def run_main():
         log_active_threads("start")
         loop.run_until_complete(main())
     except KeyboardInterrupt:
-        print("Keyboard interrupt detected, shutting down Melbot...")
+        logging.info("Keyboard interrupt detected, shutting down Melbot...")
         loop.run_until_complete(shutdown(loop))
     finally:
         log_active_threads("before shutdown")
@@ -60,7 +59,7 @@ def run_main():
         except (asyncio.CancelledError, RuntimeError):
             pass
         loop.close()
-        print("Event loop closed.")
+        logging.info("Event loop closed.")
         log_active_threads("after shutdown")
         join_remaining_threads()
         log_active_threads("after joining threads")
@@ -68,7 +67,7 @@ def run_main():
         # If there are still threads remaining, force exit
         remaining_threads = threading.enumerate()
         if len(remaining_threads) > 1:  # More than just the main thread
-            print("Remaining threads detected, forcefully exiting.")
+            logging.info("Remaining threads detected, forcefully exiting.")
             os._exit(1)
         else:
             sys.exit(0)

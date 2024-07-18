@@ -1,0 +1,9 @@
+{
+    "bot_admins": [12345, 6789],
+    "shop_channel_id": 11111,
+    "bot_commands_channel_id": [22222],
+    "db_name": "melbot",
+    "min_message_length": 3,
+    "message_points_cooldown": 2,
+    "points_per_message": 1
+}

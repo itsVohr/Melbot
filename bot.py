@@ -1,4 +1,5 @@
 import os
+import json
 import discord
 import asyncio
 import logging
@@ -35,13 +36,16 @@ class SafeMember(commands.Converter):
 
 class Melbot():
     def __init__(self, command_prefix:str='!'):
-        self.db = DBHelper(os.environ['DB_NAME'])
+        logging.info("Melbot init")
+        self.config = json.load(open('Melbot/bot.json'))
+        self.db = DBHelper(self.config['db_name'])
         self.gdrive = GDriveHelper()
         self.discord_token = os.environ['DISCORD_TOKEN']
         self.intents = discord.Intents.default()
         self.intents.message_content = True
         self.bot = commands.Bot(command_prefix=command_prefix, intents=self.intents)
         self.cooldowns = {"message": {}}
+        logging.info("Melbot init done")
 
 
     async def initialize(self):
@@ -65,7 +69,7 @@ class Melbot():
 
     def is_bot_admin(self):
         async def predicate(ctx):
-            if ctx.author.id != int(os.environ['BOT_ADMIN_ID']):
+            if ctx.author.id in self.config['bot_admins']:
                 raise NotBotAdmin()
             return True
         return commands.check(predicate)
@@ -99,14 +103,14 @@ class Melbot():
         async def on_message(message):
             if (message.author == self.bot.user) or message.author.bot:
                 return
-            if not message.content.startswith(self.bot.command_prefix) and len(message.content) > 3:
+            if not message.content.startswith(self.bot.command_prefix) and len(message.content) > self.config['min_message_length']:
                 current_time = datetime.now().timestamp()
                 if message.author.id in self.cooldowns["message"]:
-                    if current_time - self.cooldowns["message"][message.author.id] < 2:
+                    if current_time - self.cooldowns["message"][message.author.id] < self.config['message_points_cooldown']:
                         return
                 self.cooldowns["message"].update({message.author.id: current_time})
-                await self.db.add_event(message.author.id, 1, 'message')
-            if message.channel.id == int(os.environ['BOT_COMMANDS_CHANNEL_ID']) or message.author.id == int(os.environ['BOT_ADMIN_ID']):
+                await self.db.add_event(message.author.id, self.config["points_per_message"], 'message')
+            if message.channel.id in self.config["bot_commands_channel_id"] or message.author.id in self.config["bot_admins"]:
                 await self.bot.process_commands(message)
 
         # --- bot commands ---
@@ -170,8 +174,8 @@ class Melbot():
 
             await self.db.add_event(user_id, item_price * -1, f"bought item {item_id}")
             await ctx.send(f"You have successfully bought the item {item_id} for {item_price} melpoints.")
-            shop_channel_id = await self.bot.fetch_channel(os.environ['SHOP_CHANNEL_ID'])
-            await shop_channel_id.send(f"{ctx.author.mention} has bought the item {item_id} for {item_price} melpoints.")
+            shop_channel = await self.bot.fetch_channel(self.config['shop_channel_id'])
+            await shop_channel.send(f"{ctx.author.mention} has bought the item {item_id} for {item_price} melpoints.")
             await ctx.author.send(f"You have successfully bought the item {item_id} for {item_price} melpoints."+link_message)
 
         @self.bot.command(help="Display the shop items.")
@@ -196,6 +200,8 @@ class Melbot():
                     points = user_points
                 elif points.lower() == 'half':
                     points = user_points // 2
+                elif points.lower() == 'max':
+                    points = min(user_points, int(os.getenv('GAMBLE_LIMIT')))
                 else:
                     await ctx.send("Wrong syntax, it should be like this '!gamble 100' or '!gamble all'")
                     return

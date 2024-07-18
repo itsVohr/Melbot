@@ -3,3 +3,4 @@ melbot_service_account.json
 *.pyc
 *.sh
 downloads/*
+bot.json
