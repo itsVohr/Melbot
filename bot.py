@@ -74,13 +74,6 @@ class Melbot():
             return True
         return commands.check(predicate)
 
-    def _file_in_drive(self, file_name):
-        files = self.gdrive.get_files()
-        for file in files:
-            if file['name'] == file_name:
-                return True
-        return False
-
     @tasks.loop(hours=24)
     async def aggregate_points_task(self):
         cutoff_timestamp = datetime.now().timestamp() - 24 * 60 * 60
@@ -156,7 +149,7 @@ class Melbot():
             if item_file == '':
                 link_message = ''
             else:
-                if not self._file_in_drive(item_file):
+                if not self.gdrive.file_in_drive(item_file):
                     await ctx.send(f"Item {item_id} doesn't have a valid file. Please contact an admin.")
                     return
                 file_list = self.gdrive.get_files()
@@ -277,7 +270,7 @@ class Melbot():
                 await ctx.send("Wrong syntax, it should be like this ""!add_item gen 500 \"nice gen\" mel.png")
                 return
             if item_file is not None:
-                if not self._file_in_drive(item_file):
+                if not self.gdrive.file_in_drive(item_file):
                     await ctx.send(f"File {item_file} not found in Google Drive.")
                     return
             else:

@@ -31,3 +31,10 @@ class GDriveHelper:
                 status, done = downloader.next_chunk()
                 print(f"Download {int(status.progress() * 100)}%.")
         return file_name
+    
+    def file_in_drive(self, file_name):
+        files = self.get_files()
+        for file in files:
+            if file['name'] == file_name:
+                return True
+        return False
