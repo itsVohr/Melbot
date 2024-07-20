@@ -1,4 +1,5 @@
 import os
+import json
 import discord
 import asyncio
 import logging
@@ -8,6 +9,7 @@ from helpers.db_helper import DBHelper
 from helpers.gdrive_helper import GDriveHelper
 from datetime import datetime
 from discord.errors import NotFound
+from games.blackjack import Blackjack
 
 class NotBotAdmin(commands.CheckFailure):
     pass
@@ -35,38 +37,61 @@ class SafeMember(commands.Converter):
 
 class Melbot():
     def __init__(self, command_prefix:str='!'):
-        self.db = DBHelper(os.environ['DB_NAME'])
+        logging.info("Melbot init")
+        self.config = json.load(open('Melbot/bot.json'))
+        self.db = DBHelper(self.config['db_name'])
         self.gdrive = GDriveHelper()
         self.discord_token = os.environ['DISCORD_TOKEN']
         self.intents = discord.Intents.default()
         self.intents.message_content = True
         self.bot = commands.Bot(command_prefix=command_prefix, intents=self.intents)
         self.cooldowns = {"message": {}}
+        self.playing_blackjack = {}
+        logging.info("Melbot init done")
+
 
     async def initialize(self):
         await self.db.initialize()
         await self.db.create_db()
 
     async def run(self):
-        logging.info("Initating Melbot...") 
-        await self.initialize()
-        await self.add_bot_events()
-        await self.bot.start(self.discord_token)
-        self.aggregate_points_task.cancel()
+        try:
+            logging.info("Initating Melbot...") 
+            await self.initialize()
+            await self.add_bot_events()
+            logging.info("Bot is running...")
+            await self.bot.start(self.discord_token)
+            await self.aggregate_points_task.cancel()
+            await self.timeout_blackjack_task.cancel()
+        except asyncio.CancelledError:
+            logging.info("Bot cancelled.")
+
+    async def shutdown(self):
+        logging.info("Shutting down bot...")
+        await self.bot.close()
 
     def is_bot_admin(self):
         async def predicate(ctx):
-            if ctx.author.id != int(os.environ['BOT_ADMIN_ID']):
+            if ctx.author.id not in self.config['bot_admins']:
                 raise NotBotAdmin()
             return True
         return commands.check(predicate)
-
-    def _file_in_drive(self, file_name):
-        files = self.gdrive.get_files()
-        for file in files:
-            if file['name'] == file_name:
-                return True
-        return False
+    
+    @tasks.loop(minutes=10)
+    async def timeout_blackjack_task(self):
+        logging.info("Checking for blackjack timeouts...")
+        current_time = datetime.now().timestamp()
+        timed_out_players = []
+        for user_id, game in self.playing_blackjack.items():
+            if current_time - game["start_time"] >= 60 * 10:
+                timed_out_players.append(user_id)
+        for user_id in timed_out_players:
+            game = self.playing_blackjack[user_id]
+            await self.db.add_event(user_id, game["bet"] * -1, 'blackjack')
+            self.playing_blackjack.pop(user_id)
+            await game["ctx"].send(f"{game["ctx"].author.name} - your blackjack game has timed out.")
+            logging.info(f"Blackjack game for {game["ctx"].author.name} has timed out.")
+        logging.info("Checked for blackjack timeouts.")
 
     @tasks.loop(hours=24)
     async def aggregate_points_task(self):
@@ -85,19 +110,20 @@ class Melbot():
         @self.bot.event
         async def on_ready():
             self.aggregate_points_task.start()
+            self.timeout_blackjack_task.start()
 
         @self.bot.event
         async def on_message(message):
-            if message.author == self.bot.user:
+            if (message.author == self.bot.user) or message.author.bot:
                 return
-            if not message.content.startswith(self.bot.command_prefix) and len(message.content) > 3:
+            if not message.content.startswith(self.bot.command_prefix) and len(message.content) > self.config['min_message_length']:
                 current_time = datetime.now().timestamp()
                 if message.author.id in self.cooldowns["message"]:
-                    if current_time - self.cooldowns["message"][message.author.id] < 2:
+                    if current_time - self.cooldowns["message"][message.author.id] < self.config['message_points_cooldown']:
                         return
                 self.cooldowns["message"].update({message.author.id: current_time})
-                await self.db.add_event(message.author.id, 1, 'message')
-            if message.channel.id == int(os.environ['BOT_COMMANDS_CHANNEL_ID']) or message.author.id == int(os.environ['BOT_ADMIN_ID']):
+                await self.db.add_event(message.author.id, self.config["points_per_message"], 'message')
+            if message.channel.id in self.config["bot_commands_channel_id"] or message.author.id in self.config["bot_admins"]:
                 await self.bot.process_commands(message)
 
         # --- bot commands ---
@@ -105,13 +131,14 @@ class Melbot():
         @self.bot.command(help="Display the help message.")
         async def help(ctx):
             embed = discord.Embed(title="Melbot Help", description="List of available commands")
+            ignore_commands = ['hit', 'stand']
             for command in self.bot.commands:
                 can_run = True
                 try:
                     await command.can_run(ctx)
                 except (NotBotAdmin, commands.CommandError):
                     can_run = False
-                if can_run:
+                if can_run and command.name not in ignore_commands:
                     embed.add_field(name=f"{self.bot.command_prefix}{command.name}", value=command.help or "No description", inline=False)
             await ctx.send(embed=embed)
 
@@ -143,7 +170,7 @@ class Melbot():
             if item_file == '':
                 link_message = ''
             else:
-                if not self._file_in_drive(item_file):
+                if not self.gdrive.file_in_drive(item_file):
                     await ctx.send(f"Item {item_id} doesn't have a valid file. Please contact an admin.")
                     return
                 file_list = self.gdrive.get_files()
@@ -161,8 +188,8 @@ class Melbot():
 
             await self.db.add_event(user_id, item_price * -1, f"bought item {item_id}")
             await ctx.send(f"You have successfully bought the item {item_id} for {item_price} melpoints.")
-            shop_channel_id = await self.bot.fetch_channel(os.environ['SHOP_CHANNEL_ID'])
-            await shop_channel_id.send(f"{ctx.author.mention} has bought the item {item_id} for {item_price} melpoints.")
+            shop_channel = await self.bot.fetch_channel(self.config['shop_channel_id'])
+            await shop_channel.send(f"{ctx.author.mention} has bought the item {item_id} for {item_price} melpoints.")
             await ctx.author.send(f"You have successfully bought the item {item_id} for {item_price} melpoints."+link_message)
 
         @self.bot.command(help="Display the shop items.")
@@ -172,7 +199,6 @@ class Melbot():
                 await ctx.send("The shop is empty.")
                 return
             embed = discord.Embed(title="Madame Melanie's Shop", color=discord.Color.blue())
-            print(f"enumerated_items: {items}")
             for item in items:
                 item_details = f"> **Price**: {item[2]} melpoints\n> **Description**: {item[3]}"
                 embed.add_field(name=f"**{item[1]}**", value=item_details, inline=False)
@@ -188,6 +214,8 @@ class Melbot():
                     points = user_points
                 elif points.lower() == 'half':
                     points = user_points // 2
+                elif points.lower() == 'max':
+                    points = min(user_points, int(os.getenv('GAMBLE_LIMIT')))
                 else:
                     await ctx.send("Wrong syntax, it should be like this '!gamble 100' or '!gamble all'")
                     return
@@ -209,6 +237,84 @@ class Melbot():
                 await ctx.send(f"{ctx.author} - You lost {points} points.")
             else:
                 await ctx.send(f"{ctx.author} - You won {earned_points} points.")
+
+        @self.bot.command(help="Play a game of blackjack for melpoints. Syntax: !blackjack <melpoints>")
+        async def blackjack(ctx, points: int = None):
+            user_id = ctx.author.id
+            blackjack = Blackjack(user_id)
+            user_points = await self.db.get_total_currency(str(user_id))
+
+            # Validate points
+            if points is None or type(points) != int:
+                await ctx.send("Please provide a number of melpoints to bet. Syntax: !blackjack <melpoints>")
+                return
+            if points > user_points:
+                await ctx.send(f"You do not have enough melpoints to bet {points} points. You have {user_points} melpoints.")
+                return
+            if points < blackjack.config['min_bet']:
+                await ctx.send(f"The minimum bet is {blackjack.config['min_bet']} points.")
+                return
+            if points > blackjack.config['max_bet']:
+                await ctx.send(f"The maximum bet is {blackjack.config['max_bet']} points.")
+                return
+
+            if user_id in self.playing_blackjack:
+                await ctx.send("You are already playing a game of blackjack.")
+                return
+
+            blackjack.deal()
+
+            await ctx.send(f"""{ctx.author.name} - you drew: {blackjack.players[user_id].hand[0]} and {blackjack.players[user_id].hand[1]}\nI drew: {blackjack.players["dealer"].hand[0]} and something else.\n\nYou have {blackjack.calculate_score(user_id)} points. Do you want to !hit or !stand?""")
+            self.playing_blackjack.update({user_id: {"bet": points, "game": blackjack, "ctx": ctx,"start_time": datetime.now().timestamp()}})
+            
+        @self.bot.command()
+        async def hit(ctx):
+            user_id = ctx.author.id
+            if user_id not in self.playing_blackjack:
+                await ctx.send("You are not playing blackjack.")
+                return
+            blackjack = self.playing_blackjack[user_id]["game"]
+            blackjack.hit(user_id)
+            score = blackjack.calculate_score(user_id)
+            if score > 21:
+                await ctx.send(f"{ctx.author.name} - you drew: {blackjack.players[user_id].hand[-1]}\n\nYou have {score} points. You busted!")
+                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * -1, 'blackjack')
+                self.playing_blackjack.pop(user_id)
+                return
+            await ctx.send(f"{ctx.author.name} - you drew: {blackjack.players[user_id].hand[-1]}\n\nYou have {score} points. Do you want to !hit or !stand?")
+            self.playing_blackjack[user_id].update({"game": blackjack})
+
+        @self.bot.command()
+        async def stand(ctx):
+            user_id = ctx.author.id
+            if user_id not in self.playing_blackjack:
+                await ctx.send("You are not playing blackjack.")
+                return
+            blackjack = self.playing_blackjack[user_id]["game"]
+            user_score = blackjack.calculate_score(user_id)
+            dealer_score = blackjack.calculate_score("dealer")
+            while dealer_score < 17:
+                blackjack.hit("dealer")
+                await ctx.send(f"The dealer drew: {blackjack.players['dealer'].hand[-1]}")
+                dealer_score = blackjack.calculate_score("dealer")
+                await asyncio.sleep(0.5)
+            if dealer_score > 21:
+                await ctx.send(f"{ctx.author.name} - you have {user_score} points. The dealer busted with {dealer_score} points. You win!")
+                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * (blackjack.config["payout"] - 1), 'blackjack')
+            elif user_score > dealer_score:
+                await ctx.send(f"{ctx.author.name} - you have {user_score} points. The dealer has {dealer_score} points. You win!")
+                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * (blackjack.config["payout"] - 1), 'blackjack')
+            elif user_score < dealer_score:
+                await ctx.send(f"{ctx.author.name} - you have {user_score} points. The dealer has {dealer_score} points. You lose!")
+                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * -1, 'blackjack')
+            elif user_score == 21 and len(blackjack.players[user_id].hand) == 2 and user_score > dealer_score:
+                await ctx.send(f"{ctx.author.name} - you have {user_score} points. You got a blackjack! You win!")
+                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * (blackjack.config["payout"] - 1), 'blackjack')
+            else:
+                await ctx.send(f"{ctx.author.name} - you have {user_score} points. The dealer has {dealer_score} points. It's a tie! But the house always wins.")
+                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * -1, 'blackjack')
+            self.playing_blackjack.pop(user_id)
+ 
 
         @self.bot.command(help="Display the leaderboard.")
         async def leaderboard(ctx):
@@ -263,7 +369,7 @@ class Melbot():
                 await ctx.send("Wrong syntax, it should be like this ""!add_item gen 500 \"nice gen\" mel.png")
                 return
             if item_file is not None:
-                if not self._file_in_drive(item_file):
+                if not self.gdrive.file_in_drive(item_file):
                     await ctx.send(f"File {item_file} not found in Google Drive.")
                     return
             else:

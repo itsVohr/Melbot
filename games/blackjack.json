@@ -1,0 +1,7 @@
+{
+    "min_bet": 10,
+    "max_bet": 5000,
+    "max_players": 5,
+    "turn_timeout": 30,
+    "payout": 1.5
+}
