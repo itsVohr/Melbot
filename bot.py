@@ -61,7 +61,7 @@ class Melbot():
             await self.add_bot_events()
             logging.info("Bot is running...")
             await self.bot.start(self.discord_token)
-            await self.aggregate_points_task.cancel()
+            #await self.aggregate_points_task.cancel()
             await self.timeout_blackjack_task.cancel()
         except asyncio.CancelledError:
             logging.info("Bot cancelled.")
@@ -109,7 +109,7 @@ class Melbot():
         # --- bot events ---
         @self.bot.event
         async def on_ready():
-            self.aggregate_points_task.start()
+            #self.aggregate_points_task.start()
             self.timeout_blackjack_task.start()
 
         @self.bot.event
