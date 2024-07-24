@@ -3,13 +3,13 @@ import json
 import discord
 import asyncio
 import logging
-from utils import gamba
 from discord.ext import commands, tasks
 from helpers.db_helper import DBHelper
 from helpers.gdrive_helper import GDriveHelper
 from datetime import datetime
 from discord.errors import NotFound
 from games import blackjack
+from games import gamba
 
 class NotBotAdmin(commands.CheckFailure):
     pass
@@ -128,6 +128,7 @@ class Melbot():
 
         # --- bot commands ---
         blackjack.add_bot_commands(self.bot, self.playing_blackjack, self.db)
+        gamba.add_bot_commands(self.bot, self.db)
 
         self.bot.remove_command('help')
         @self.bot.command(help="Display the help message.")
@@ -206,40 +207,6 @@ class Melbot():
                 embed.add_field(name=f"**{item[1]}**", value=item_details, inline=False)
             await ctx.send(embed=embed)
 
-        @self.bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
-        async def gamble(ctx, points: int|str):
-            user_id = str(ctx.author.id)
-            user_points = await self.db.get_total_currency(user_id)
-            # Handle string inputs
-            if type(points) == str:
-                if points.lower() == 'all':
-                    points = user_points
-                elif points.lower() == 'half':
-                    points = user_points // 2
-                elif points.lower() == 'max':
-                    points = min(user_points, int(os.getenv('GAMBLE_LIMIT')))
-                else:
-                    await ctx.send("Wrong syntax, it should be like this '!gamble 100' or '!gamble all'")
-                    return
-            if points > user_points:
-                await ctx.send(f"You do not have enough points to gamble {points} points. You have {user_points} points.")
-                return
-            if points < 0:
-                await ctx.send("You cannot gamble a negative number of points.")
-                return
-            if points == 0:
-                await ctx.send("You cannot gamble 0 points.")
-                return
-            if points > int(os.getenv('GAMBLE_LIMIT')):
-                await ctx.send(f"You can't bet more than {os.getenv('GAMBLE_LIMIT')} points.")
-                return
-            earned_points = gamba(points)
-            await self.db.add_event(user_id, earned_points - points, 'gamble')
-            if earned_points == 0:
-                await ctx.send(f"{ctx.author} - You lost {points} points.")
-            else:
-                await ctx.send(f"{ctx.author} - You won {earned_points} points.")
- 
         @self.bot.command(help="Display the leaderboard.")
         async def leaderboard(ctx):
             leaderboard = await self.db.get_leaderboard()
