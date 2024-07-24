@@ -71,7 +71,6 @@ class DBHelper:
                 GROUP BY userid;
         ''', (cutoff_timestamp,)) as cursor:
             await cursor.close()
-
         async with self.conn.execute('''
             UPDATE points_agg
             SET total_points = points_agg.total_points + (SELECT currency_change FROM total_points WHERE points_agg.userid = total_points.userid),
@@ -83,7 +82,6 @@ class DBHelper:
             );
         ''', (cutoff_timestamp,)) as cursor:
             await cursor.close()
-
         async with self.conn.execute('''
             INSERT INTO points_agg (userid, total_points, last_update)
             SELECT userid, currency_change, ?
@@ -95,15 +93,10 @@ class DBHelper:
             );
         ''', (cutoff_timestamp,)) as cursor:
             await cursor.close()
-
         async with self.conn.execute('DROP TABLE total_points;') as cursor:
             await cursor.close()
-
-        await self.conn.commit()
-
         async with self.conn.execute('DELETE FROM events WHERE event_timestamp < ?', (cutoff_timestamp,)) as cursor:
             await cursor.close()
-
         await self.conn.commit()
 
     async def add_event(self, userid: str, currency_change: int, reason: str):
@@ -257,18 +250,26 @@ if __name__ == "__main__":
         await db._add_event_test("u2", 300, 300, "")
         await db._add_event_test("u3", 300, 300, "")
         await db._add_event_test("u3", 900, 900, "")
+        await db._add_event_test("u2", 900, 900, "")
         await db.aggregate_points(250)
         t1 = await db.get_aggregated_currency("u1")
         t2 = await db.get_aggregated_currency("u2")
         print(t1,t2)
         # expected: u1: 300, u2: 200
         await db.aggregate_points(500)
-        # expected: u1: 300, u2: 500, u3: 300
         t1 = await db.get_aggregated_currency("u1")
         t2 = await db.get_aggregated_currency("u2")
         t3 = await db.get_aggregated_currency("u3")
         print(t1,t2, t3)
-        exit(0)
+        # expected: u1: 300, u2: 500, u3: 300
+        await db.aggregate_points(1000)
+        t1 = await db.get_aggregated_currency("u1")
+        t2 = await db.get_aggregated_currency("u2")
+        t3 = await db.get_aggregated_currency("u3")
+        print(t1,t2, t3)
+        # expected: u1: 300, u2: 1400, u3: 1200
+
+        os._exit(0)
         
     if os.path.exists("test_melbot.db"):
         os.remove("test_melbot.db")
