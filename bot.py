@@ -10,6 +10,7 @@ from datetime import datetime
 from discord.errors import NotFound
 from games import blackjack
 from games import gamba
+from games import gacha
 
 class NotBotAdmin(commands.CheckFailure):
     pass
@@ -129,6 +130,7 @@ class Melbot():
         # --- bot commands ---
         blackjack.add_bot_commands(self.bot, self.playing_blackjack, self.db)
         gamba.add_bot_commands(self.bot, self.db)
+        gacha.add_bot_commands(self.bot, self.db)
 
         self.bot.remove_command('help')
         @self.bot.command(help="Display the help message.")

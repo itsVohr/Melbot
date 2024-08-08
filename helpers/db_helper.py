@@ -62,6 +62,16 @@ class DBHelper:
         ''')
         await self.c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_userid_agg ON points_agg(userid)')
         await self.conn.commit()
+        await self.c.execute('''
+            CREATE TABLE IF NOT EXISTS gacha_events
+            (
+                userid text,
+                reward_rarity integer,
+                reward_name text,
+                event_timestamp integer
+            )
+        ''')
+        await self.c.execute('CREATE INDEX IF NOT EXISTS idx_gacha_userid ON gacha_events(userid)')
 
     async def aggregate_points(self, cutoff_timestamp):
         async with self.conn.execute('''
@@ -236,6 +246,34 @@ class DBHelper:
     def close(self):
         self.conn.close()
 
+    async def add_gacha_event(self, userid: str, reward_rarity: int, reward_name: str, event_timestamp: int):
+        query = 'INSERT INTO gacha_events VALUES (?, ?, ?, ?)'
+        await self.c.execute(query, (userid, reward_rarity, reward_name, event_timestamp))
+        await self.conn.commit()
+
+    async def get_pity(self, userid: str):
+        query = """WITH last_rewards AS (
+                SELECT
+                    userid,
+                    MAX(CASE WHEN reward_rarity = 4 THEN event_timestamp END) AS last_reward_4,
+                    MAX(CASE WHEN reward_rarity = 5 THEN event_timestamp END) AS last_reward_5
+                FROM gacha_events
+                GROUP BY userid
+            )
+            SELECT
+                e.userid,
+                SUM(CASE WHEN e.event_timestamp > lr.last_reward_4 THEN 1 ELSE 0 END) AS events_since_last_reward_4,
+                SUM(CASE WHEN e.event_timestamp > lr.last_reward_5 THEN 1 ELSE 0 END) AS events_since_last_reward_5
+            FROM gacha_events e
+            JOIN last_rewards lr ON e.userid = lr.userid
+            WHERE e.userid = ?
+            GROUP BY e.userid;"""
+        async with self.conn.execute(query, (userid,)) as cursor:
+            result = await cursor.fetchone()
+            if result is None:
+                return 0, 0
+            else:
+                return result[1], result[2]
 
 if __name__ == "__main__":
     import os
