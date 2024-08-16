@@ -255,8 +255,8 @@ class DBHelper:
         query = """WITH last_rewards AS (
                 SELECT
                     userid,
-                    MAX(CASE WHEN reward_rarity = 4 THEN event_timestamp END) AS last_reward_4,
-                    MAX(CASE WHEN reward_rarity = 5 THEN event_timestamp END) AS last_reward_5
+                    MAX(CASE WHEN reward_rarity = 4 THEN event_timestamp ELSE 0 END) AS last_reward_4,
+                    MAX(CASE WHEN reward_rarity = 5 THEN event_timestamp ELSE 0 END) AS last_reward_5
                 FROM gacha_events
                 GROUP BY userid
             )
@@ -308,7 +308,16 @@ if __name__ == "__main__":
         # expected: u1: 300, u2: 1400, u3: 1200
 
         os._exit(0)
-        
+
     if os.path.exists("test_melbot.db"):
         os.remove("test_melbot.db")
-    asyncio.run(test_db())
+
+    async def test_pity():
+        db = DBHelper("melbot")
+        await db.initialize()
+        await db.create_db()
+        p1, p2 = await db.get_pity("267036881038999553")
+        print(p1, p2)
+    
+    #asyncio.run(test_db())
+    asyncio.run(test_pity())

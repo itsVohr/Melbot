@@ -19,11 +19,11 @@ class Gacha:
         self.config = json.load(open('Melbot/games/gacha.json'))
 
     async def _get_pity(self):
-        (self.pity_4, self.pity_5) = await self.db.get_pity(self.user)
+        self.pity_4, self.pity_5 = await self.db.get_pity(self.user)
 
     async def _update_db(self, reward_name: str, reward: int):
         await self.db.add_event(self.user, self.config['pull_price'] * -1, 'gacha')
-        await self.db.add_gacha_event(self.user, reward_name, reward, datetime.now().timestamp())
+        await self.db.add_gacha_event(self.user, reward, reward_name, datetime.now().timestamp())
 
     async def _five_star_pity(self, pulls: int) -> float:
         soft_pity = self.config['five_star_soft_pity']
@@ -55,13 +55,14 @@ class Gacha:
     async def pull(self):
         await self._get_pity()
         roll = random.random()
+        print(f"Roll: {roll}")
         if roll <= await self._five_star_pity(self.pity_5):
             reward = 5
-        elif roll <= self.config['four_star_rate'] or self.pity_4 == self.config['four_star_pity']:
+        elif roll <= self.config['four_star_rate'] or self.pity_4 >= self.config['four_star_pity']:
             reward = 4
         else:
             reward = 3
-            reward_link, reward_name = await self.get_reward(reward)
+        reward_link, reward_name = await self.get_reward(reward)
         await self._update_db(reward_name, reward)
         return (reward, reward_link)
 
@@ -76,10 +77,18 @@ def add_bot_commands(bot: Bot, db: DBHelper):
         if user_points < gacha.config['pull_price'] * amt:
             await ctx.send(f"{ctx.author} - You don't have enough points to pull from the gacha.")
             return
-        (reward, reward_link) = await gacha.pull()
-        await ctx.send(f"{ctx.author} - You pulled and got a {reward} stars reward.")
-        await ctx.author.send(f"Congratulations! You just got a {reward} stars pull!"+reward_link)
-
+        total_rewards = [await gacha.pull() for _ in range(amt)]
+        if len(total_rewards) == 1:
+            reward, reward_link = total_rewards[0]
+            await ctx.send(f"{ctx.author} - You pulled and got a {reward} stars reward.")
+            await ctx.author.send(f"Congratulations! You just got a {reward} stars pull!\n"+reward_link)
+        elif len(total_rewards) < 1:
+            await ctx.send(f"{ctx.author} - Something went wrong with the gacha pull. Please contact an admin.")
+        else:
+            list_of_links = [f"{reward[0]} stars: {reward[1]}\n" for reward in total_rewards]
+            best_reward = max([reward[0] for reward in total_rewards])
+            await ctx.send(f"{ctx.author} - You pulled {amt} times! Your best pull was a {best_reward} stars reward.")
+            await ctx.author.send(f"Congratulations! You just got all of these pulls!\n"+"\n".join(list_of_links))
 
 if __name__ == '__main__':
     db = DBHelper("gacha_test.db")
