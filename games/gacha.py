@@ -37,23 +37,22 @@ class Gacha:
         else:
             return 1.0
         
-    async def get_reward(self, rarity: int) -> str:
-        files = GDriveHelper().get_files()
-        for file in files:
+    async def get_reward(self, rarity: int, gdrive_files: list) -> str:
+        for file in gdrive_files:
             if file['name'] == f"{rarity} Stars":
                 parent_folder = file["id"]
                 break
         if not parent_folder:
             logging.error(f"Folder for {rarity} stars not found.")
             return "Parent folder not found."
-        potential_rewards = [file for file in files if parent_folder in file.get("parents", [])]
+        potential_rewards = [file for file in gdrive_files if parent_folder in file.get("parents", [])]
         if not potential_rewards or len(potential_rewards) == 0:
             logging.error(f"No rewards found for {rarity} stars.")
             return "No rewards found."
         reward = random.choice(potential_rewards)
         return reward["webViewLink"], reward["name"]
 
-    async def pull(self):
+    async def pull(self, gdrive_files: list):
         await self._get_pity()
         roll = random.random()
         print(f"Roll: {roll}")
@@ -63,7 +62,7 @@ class Gacha:
             reward = 4
         else:
             reward = 3
-        reward_link, reward_name = await self.get_reward(reward)
+        reward_link, reward_name = await self.get_reward(reward, gdrive_files)
         await self._update_db(reward_name, reward)
         return (reward, reward_link)
 
@@ -78,7 +77,8 @@ def add_bot_commands(bot: Bot, db: DBHelper):
         if user_points < gacha.config['pull_price'] * amt:
             await ctx.send(f"{ctx.author} - You don't have enough points to pull from the gacha.")
             return
-        total_rewards = [await gacha.pull() for _ in range(amt)]
+        gdrive_files = GDriveHelper().get_files()
+        total_rewards = [await gacha.pull(gdrive_files) for _ in range(amt)]
         if len(total_rewards) == 1:
             reward, reward_link = total_rewards[0]
             await ctx.send(f"{ctx.author} - You pulled and got a {reward} stars reward.")
