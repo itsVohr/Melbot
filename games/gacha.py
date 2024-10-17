@@ -1,5 +1,6 @@
 import sys
 import os
+import asyncio
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
@@ -32,7 +33,7 @@ class Gacha:
         if pulls < soft_pity:
             return self.config['five_star_rate']
         elif soft_pity <= pulls < hard_pity:
-            return (pulls - soft_pity - 1) * (1 - premium_rate) / (hard_pity - soft_pity - 1) + premium_rate
+            return max(0, pulls - soft_pity) * (1 - premium_rate) / (hard_pity - soft_pity) + premium_rate
         else:
             return 1.0
         
@@ -93,5 +94,10 @@ def add_bot_commands(bot: Bot, db: DBHelper):
 if __name__ == '__main__':
     db = DBHelper("gacha_test.db")
     gacha = Gacha(db, 1)
-    for i in range(gacha.config['five_star_pity']):
-        print(f"Chances to get a 5 star on pull number {i}: {gacha._five_star_pity(i)}")
+
+    async def main():
+        for i in range(gacha.config['five_star_pity'] + 1):
+            chance = await gacha._five_star_pity(i)
+            print(f"Chances to get a 5 star on pull number {i}: {chance}")
+
+    asyncio.run(main())
