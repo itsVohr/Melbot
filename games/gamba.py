@@ -1,5 +1,6 @@
 import random
 import os
+import json
 from helpers.db_helper import DBHelper
 from discord.ext.commands import Bot
 
@@ -8,6 +9,8 @@ def gamba_odds(value: int) -> int:
         return 2 * value
     else:
         return 0
+
+config = json.load(open('Melbot/games/gamba.json'))
 
 def add_bot_commands(bot: Bot, db: DBHelper):    
     @bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
@@ -21,7 +24,7 @@ def add_bot_commands(bot: Bot, db: DBHelper):
             elif points.lower() == 'half':
                 points = user_points // 2
             elif points.lower() == 'max':
-                points = min(user_points, int(os.getenv('GAMBLE_LIMIT')))
+                points = min(user_points, config.get("gamble_limit"))
             else:
                 await ctx.send("Wrong syntax, it should be like this '!gamble 100' or '!gamble all'")
                 return
@@ -34,8 +37,8 @@ def add_bot_commands(bot: Bot, db: DBHelper):
         if points == 0:
             await ctx.send("You cannot gamble 0 points.")
             return
-        if points > int(os.getenv('GAMBLE_LIMIT')):
-            await ctx.send(f"You can't bet more than {os.getenv('GAMBLE_LIMIT')} points.")
+        if points > config.get("gamble_limit"):
+            await ctx.send(f"You can't bet more than {config.get("gamble_limit")} points.")
             return
         earned_points = gamba_odds(points)
         await db.add_event(user_id, earned_points - points, 'gamble')
