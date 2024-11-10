@@ -45,6 +45,7 @@ class Melbot():
         self.discord_token = os.environ['DISCORD_TOKEN']
         self.intents = discord.Intents.default()
         self.intents.message_content = True
+        self.intents.members = True
         self.bot = commands.Bot(command_prefix=command_prefix, intents=self.intents)
         self.cooldowns = {"message": {}}
         self.playing_blackjack = {}
@@ -64,6 +65,7 @@ class Melbot():
             await self.bot.start(self.discord_token)
             #await self.aggregate_points_task.cancel()
             await self.timeout_blackjack_task.cancel()
+            await self.update_users_table.cancel()
         except asyncio.CancelledError:
             logging.info("Bot cancelled.")
 
@@ -101,6 +103,12 @@ class Melbot():
         await self.db.aggregate_points_async(cutoff_timestamp)
         logging.info("Aggregated points successfully.")
 
+    @tasks.loop(hours=24)
+    async def update_users_table(self):
+        guild = self.bot.get_guild(self.config.get("bot_guild"))
+        member_list = [member for member in guild.members]
+        await self.db.replace_users(member_list)
+
 
     @aggregate_points_task.before_loop
     async def before_aggregate_points_task(self):
@@ -112,6 +120,7 @@ class Melbot():
         async def on_ready():
             #self.aggregate_points_task.start()
             self.timeout_blackjack_task.start()
+            self.update_users_table.start()
 
         @self.bot.event
         async def on_message(message):

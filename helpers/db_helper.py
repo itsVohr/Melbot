@@ -72,6 +72,16 @@ class DBHelper:
             )
         ''')
         await self.c.execute('CREATE INDEX IF NOT EXISTS idx_gacha_userid ON gacha_events(userid)')
+        await self.conn.commit()
+        await self.c.execute("DROP TABLE IF EXISTS users")
+        await self.c.execute('''
+            CREATE TABLE IF NOT EXISTS users
+            (
+                userid text
+            )
+        ''')
+        await self.c.execute('CREATE INDEX IF NOT EXISTS idx_userid ON users(userid)')
+        await self.conn.commit()
 
     async def aggregate_points(self, cutoff_timestamp):
         async with self.conn.execute('''
@@ -182,7 +192,7 @@ class DBHelper:
     
     async def get_leaderboard(self, limit: int = 10):
         query = '''
-            SELECT userid, SUM(total_points) AS total_points
+            SELECT sq.userid, SUM(sq.total_points) AS total_points
             FROM (
                 SELECT
                     userid,
@@ -194,9 +204,11 @@ class DBHelper:
                     userid,
                     total_points
                 FROM points_agg p
-            )
-            GROUP BY userid
-            ORDER BY total_points DESC
+            ) sq
+            JOIN users u
+                ON sq.userid = u.userid
+            GROUP BY sq.userid
+            ORDER BY sq.total_points DESC
             LIMIT ?;
         '''
         async with self.conn.execute(query, (limit,)) as cursor:
@@ -274,6 +286,16 @@ class DBHelper:
                 return 0, 0
             else:
                 return result[1], result[2]
+    
+    async def replace_users(self, user_list: list, batch_size: int = -1):
+        if batch_size == -1:
+            batch_size = len(user_list)
+        for i in range(0, len(user_list), batch_size):
+            batch = user_list[i:i+batch_size]
+            batch_ids = [member.id for member in batch]
+            sql = f"INSERT INTO users (userid) VALUES (?)"
+            await self.c.executemany(sql, [(userid,) for userid in batch_ids])
+            await self.conn.commit()
 
 if __name__ == "__main__":
     import os
