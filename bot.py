@@ -39,7 +39,7 @@ class SafeMember(commands.Converter):
 class Melbot():
     def __init__(self, command_prefix:str='!'):
         logging.info("Melbot init")
-        self.config = json.load(open('Melbot/bot.json'))
+        self.config = json.load(open('bot.json'))
         self.db = DBHelper(self.config['db_name'])
         self.gdrive = GDriveHelper()
         self.discord_token = os.environ['DISCORD_TOKEN']
