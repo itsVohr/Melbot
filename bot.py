@@ -51,10 +51,10 @@ class Melbot():
         self.playing_blackjack = {}
         logging.info("Melbot init done")
 
-
     async def initialize(self):
         await self.db.initialize()
         await self.db.create_db()
+        #await self.bot.load_extension(self.db, name="cogs.events")
 
     async def run(self):
         try:
@@ -68,6 +68,9 @@ class Melbot():
             await self.update_users_table.cancel()
         except asyncio.CancelledError:
             logging.info("Bot cancelled.")
+        except Exception as e:
+            logging.info("Unhandled exception:")
+            logging.info(e)
 
     async def shutdown(self):
         logging.info("Shutting down bot...")
@@ -135,6 +138,10 @@ class Melbot():
                 await self.db.add_event(message.author.id, self.config["points_per_message"], 'message')
             if message.channel.id in self.config["bot_commands_channel_id"] or message.author.id in self.config["bot_admins"]:
                 await self.bot.process_commands(message)
+
+        @self.bot.event
+        async def on_raw_member_remove(_payload):
+            await self.db.delete_user(str(_payload.user.id))
 
         # --- bot commands ---
         blackjack.add_bot_commands(self.bot, self.playing_blackjack, self.db)

@@ -297,6 +297,11 @@ class DBHelper:
             await self.c.executemany(sql, [(userid,) for userid in batch_ids])
             await self.conn.commit()
 
+    async def delete_user(self, userid:str):
+        query = """DELETE FROM events WHERE userid = ?"""
+        await self.c.execute(query, (userid,))
+        await self.conn.commit()
+
 if __name__ == "__main__":
     import os
 
