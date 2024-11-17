@@ -52,6 +52,9 @@ def run_main():
     except KeyboardInterrupt:
         logging.info("Keyboard interrupt detected, shutting down Melbot...")
         loop.run_until_complete(shutdown(loop))
+    except Exception as e:
+        logging.info("Unhandled exception at main level:")
+        logging.info(e)
     finally:
         log_active_threads("before shutdown")
         try:

@@ -192,23 +192,26 @@ class DBHelper:
     
     async def get_leaderboard(self, limit: int = 10):
         query = '''
-            SELECT sq.userid, SUM(sq.total_points) AS total_points
+            SELECT sq2.userid, sq2.total_points
             FROM (
-                SELECT
-                    userid,
-                    SUM(currency_change) AS total_points
-                FROM events e
-                GROUP BY userid
-                UNION ALL
-                SELECT
-                    userid,
-                    total_points
-                FROM points_agg p
-            ) sq
+                SELECT sq.userid, SUM(sq.total_points) AS total_points
+                FROM (
+                    SELECT
+                        userid,
+                        SUM(currency_change) AS total_points
+                    FROM events e
+                    GROUP BY userid
+                    UNION ALL
+                    SELECT
+                        userid,
+                        total_points
+                    FROM points_agg p
+                ) sq
+                GROUP BY sq.userid
+            ) sq2
             JOIN users u
-                ON sq.userid = u.userid
-            GROUP BY sq.userid
-            ORDER BY sq.total_points DESC
+                ON sq2.userid = u.userid
+            ORDER BY sq2.total_points DESC
             LIMIT ?;
         '''
         async with self.conn.execute(query, (limit,)) as cursor:

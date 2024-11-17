@@ -17,7 +17,7 @@ class Gacha:
     def __init__(self, db: DBHelper, user: int) -> None:
         self.db = db
         self.user = user
-        self.config = json.load(open('Melbot/games/gacha.json'))
+        self.config = json.load(open('games/gacha.json'))
 
     async def _get_pity(self):
         self.pity_4, self.pity_5 = await self.db.get_pity(self.user)

@@ -4,3 +4,5 @@ melbot_service_account.json
 *.sh
 downloads/*
 bot.json
+melbot-*.log
+melbot.db

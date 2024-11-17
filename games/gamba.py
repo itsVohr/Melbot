@@ -10,7 +10,7 @@ def gamba_odds(value: int) -> int:
     else:
         return 0
 
-config = json.load(open('Melbot/games/gamba.json'))
+config = json.load(open('games/gamba.json'))
 
 def add_bot_commands(bot: Bot, db: DBHelper):    
     @bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")

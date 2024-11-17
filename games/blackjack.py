@@ -46,7 +46,7 @@ class Player:
 
 class Blackjack:
     def __init__(self, initial_player_id: int) -> None:
-        self.config = json.load(open('Melbot/games/blackjack.json'))
+        self.config = json.load(open('games/blackjack.json'))
         self.deck = Deck()
         self.deck.shuffle()
         self.players = {}
