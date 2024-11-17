@@ -3,13 +3,14 @@ import json
 import discord
 import asyncio
 import logging
-from utils import gamba
 from discord.ext import commands, tasks
 from helpers.db_helper import DBHelper
 from helpers.gdrive_helper import GDriveHelper
 from datetime import datetime
 from discord.errors import NotFound
-from games.blackjack import Blackjack
+from games import blackjack
+from games import gamba
+from games import gacha
 
 class NotBotAdmin(commands.CheckFailure):
     pass
@@ -44,15 +45,16 @@ class Melbot():
         self.discord_token = os.environ['DISCORD_TOKEN']
         self.intents = discord.Intents.default()
         self.intents.message_content = True
+        self.intents.members = True
         self.bot = commands.Bot(command_prefix=command_prefix, intents=self.intents)
         self.cooldowns = {"message": {}}
         self.playing_blackjack = {}
         logging.info("Melbot init done")
 
-
     async def initialize(self):
         await self.db.initialize()
         await self.db.create_db()
+        #await self.bot.load_extension(self.db, name="cogs.events")
 
     async def run(self):
         try:
@@ -63,8 +65,12 @@ class Melbot():
             await self.bot.start(self.discord_token)
             #await self.aggregate_points_task.cancel()
             await self.timeout_blackjack_task.cancel()
+            await self.update_users_table.cancel()
         except asyncio.CancelledError:
             logging.info("Bot cancelled.")
+        except Exception as e:
+            logging.info("Unhandled exception:")
+            logging.info(e)
 
     async def shutdown(self):
         logging.info("Shutting down bot...")
@@ -100,6 +106,12 @@ class Melbot():
         await self.db.aggregate_points_async(cutoff_timestamp)
         logging.info("Aggregated points successfully.")
 
+    @tasks.loop(hours=24)
+    async def update_users_table(self):
+        guild = self.bot.get_guild(self.config.get("bot_guild"))
+        member_list = [member for member in guild.members]
+        await self.db.replace_users(member_list)
+
 
     @aggregate_points_task.before_loop
     async def before_aggregate_points_task(self):
@@ -111,6 +123,7 @@ class Melbot():
         async def on_ready():
             #self.aggregate_points_task.start()
             self.timeout_blackjack_task.start()
+            self.update_users_table.start()
 
         @self.bot.event
         async def on_message(message):
@@ -126,7 +139,15 @@ class Melbot():
             if message.channel.id in self.config["bot_commands_channel_id"] or message.author.id in self.config["bot_admins"]:
                 await self.bot.process_commands(message)
 
+        @self.bot.event
+        async def on_raw_member_remove(_payload):
+            await self.db.delete_user(str(_payload.user.id))
+
         # --- bot commands ---
+        blackjack.add_bot_commands(self.bot, self.playing_blackjack, self.db)
+        gamba.add_bot_commands(self.bot, self.db)
+        gacha.add_bot_commands(self.bot, self.db)
+
         self.bot.remove_command('help')
         @self.bot.command(help="Display the help message.")
         async def help(ctx):
@@ -203,118 +224,6 @@ class Melbot():
                 item_details = f"> **Price**: {item[2]} melpoints\n> **Description**: {item[3]}"
                 embed.add_field(name=f"**{item[1]}**", value=item_details, inline=False)
             await ctx.send(embed=embed)
-
-        @self.bot.command(help="Gamble your melpoints. You can use !gamble <number> to gamble a specific number of melpoints.")
-        async def gamble(ctx, points: int|str):
-            user_id = str(ctx.author.id)
-            user_points = await self.db.get_total_currency(user_id)
-            # Handle string inputs
-            if type(points) == str:
-                if points.lower() == 'all':
-                    points = user_points
-                elif points.lower() == 'half':
-                    points = user_points // 2
-                elif points.lower() == 'max':
-                    points = min(user_points, int(os.getenv('GAMBLE_LIMIT')))
-                else:
-                    await ctx.send("Wrong syntax, it should be like this '!gamble 100' or '!gamble all'")
-                    return
-            if points > user_points:
-                await ctx.send(f"You do not have enough points to gamble {points} points. You have {user_points} points.")
-                return
-            if points < 0:
-                await ctx.send("You cannot gamble a negative number of points.")
-                return
-            if points == 0:
-                await ctx.send("You cannot gamble 0 points.")
-                return
-            if points > int(os.getenv('GAMBLE_LIMIT')):
-                await ctx.send(f"You can't bet more than {os.getenv('GAMBLE_LIMIT')} points.")
-                return
-            earned_points = gamba(points)
-            await self.db.add_event(user_id, earned_points - points, 'gamble')
-            if earned_points == 0:
-                await ctx.send(f"{ctx.author} - You lost {points} points.")
-            else:
-                await ctx.send(f"{ctx.author} - You won {earned_points} points.")
-
-        @self.bot.command(help="Play a game of blackjack for melpoints. Syntax: !blackjack <melpoints>")
-        async def blackjack(ctx, points: int = None):
-            user_id = ctx.author.id
-            blackjack = Blackjack(user_id)
-            user_points = await self.db.get_total_currency(str(user_id))
-
-            # Validate points
-            if points is None or type(points) != int:
-                await ctx.send("Please provide a number of melpoints to bet. Syntax: !blackjack <melpoints>")
-                return
-            if points > user_points:
-                await ctx.send(f"You do not have enough melpoints to bet {points} points. You have {user_points} melpoints.")
-                return
-            if points < blackjack.config['min_bet']:
-                await ctx.send(f"The minimum bet is {blackjack.config['min_bet']} points.")
-                return
-            if points > blackjack.config['max_bet']:
-                await ctx.send(f"The maximum bet is {blackjack.config['max_bet']} points.")
-                return
-
-            if user_id in self.playing_blackjack:
-                await ctx.send("You are already playing a game of blackjack.")
-                return
-
-            blackjack.deal()
-
-            await ctx.send(f"""{ctx.author.name} - you drew: {blackjack.players[user_id].hand[0]} and {blackjack.players[user_id].hand[1]}\nI drew: {blackjack.players["dealer"].hand[0]} and something else.\n\nYou have {blackjack.calculate_score(user_id)} points. Do you want to !hit or !stand?""")
-            self.playing_blackjack.update({user_id: {"bet": points, "game": blackjack, "ctx": ctx,"start_time": datetime.now().timestamp()}})
-            
-        @self.bot.command()
-        async def hit(ctx):
-            user_id = ctx.author.id
-            if user_id not in self.playing_blackjack:
-                await ctx.send("You are not playing blackjack.")
-                return
-            blackjack = self.playing_blackjack[user_id]["game"]
-            blackjack.hit(user_id)
-            score = blackjack.calculate_score(user_id)
-            if score > 21:
-                await ctx.send(f"{ctx.author.name} - you drew: {blackjack.players[user_id].hand[-1]}\n\nYou have {score} points. You busted!")
-                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * -1, 'blackjack')
-                self.playing_blackjack.pop(user_id)
-                return
-            await ctx.send(f"{ctx.author.name} - you drew: {blackjack.players[user_id].hand[-1]}\n\nYou have {score} points. Do you want to !hit or !stand?")
-            self.playing_blackjack[user_id].update({"game": blackjack})
-
-        @self.bot.command()
-        async def stand(ctx):
-            user_id = ctx.author.id
-            if user_id not in self.playing_blackjack:
-                await ctx.send("You are not playing blackjack.")
-                return
-            blackjack = self.playing_blackjack[user_id]["game"]
-            user_score = blackjack.calculate_score(user_id)
-            dealer_score = blackjack.calculate_score("dealer")
-            while dealer_score < 17:
-                blackjack.hit("dealer")
-                await ctx.send(f"The dealer drew: {blackjack.players['dealer'].hand[-1]}")
-                dealer_score = blackjack.calculate_score("dealer")
-                await asyncio.sleep(0.5)
-            if dealer_score > 21:
-                await ctx.send(f"{ctx.author.name} - you have {user_score} points. The dealer busted with {dealer_score} points. You win!")
-                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * (blackjack.config["payout"] - 1), 'blackjack')
-            elif user_score > dealer_score:
-                await ctx.send(f"{ctx.author.name} - you have {user_score} points. The dealer has {dealer_score} points. You win!")
-                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * (blackjack.config["payout"] - 1), 'blackjack')
-            elif user_score < dealer_score:
-                await ctx.send(f"{ctx.author.name} - you have {user_score} points. The dealer has {dealer_score} points. You lose!")
-                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * -1, 'blackjack')
-            elif user_score == 21 and len(blackjack.players[user_id].hand) == 2 and user_score > dealer_score:
-                await ctx.send(f"{ctx.author.name} - you have {user_score} points. You got a blackjack! You win!")
-                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * (blackjack.config["payout"] - 1), 'blackjack')
-            else:
-                await ctx.send(f"{ctx.author.name} - you have {user_score} points. The dealer has {dealer_score} points. It's a tie! But the house always wins.")
-                await self.db.add_event(user_id, self.playing_blackjack[user_id]["bet"] * -1, 'blackjack')
-            self.playing_blackjack.pop(user_id)
- 
 
         @self.bot.command(help="Display the leaderboard.")
         async def leaderboard(ctx):
